@@ -148,6 +148,11 @@ public static class SecurityEndpoints
             returnUrl.Any(char.IsControl))
             return "/";
 
+        var path = returnUrl.Split('?', '#')[0].TrimEnd('/');
+        if (path.Equals("/acceso", StringComparison.OrdinalIgnoreCase) ||
+            path.Equals("/salir", StringComparison.OrdinalIgnoreCase))
+            return "/";
+
         return returnUrl;
     }
 

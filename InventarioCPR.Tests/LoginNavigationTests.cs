@@ -23,6 +23,10 @@ public sealed class LoginNavigationTests
     [InlineData("/\\example.com")]
     [InlineData("inventario")]
     [InlineData("/inventario\r\nX-Test: injected")]
+    [InlineData("/acceso")]
+    [InlineData("/acceso?ReturnUrl=%2Finventario")]
+    [InlineData("/salir")]
+    [InlineData("/salir/?origen=menu")]
     public void MissingOrUnsafeReturnUrlFallsBackToHome(string? returnUrl)
     {
         Assert.Equal("/", SecurityEndpoints.NormalizeReturnUrl(returnUrl));
