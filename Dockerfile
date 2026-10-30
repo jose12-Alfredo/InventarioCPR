@@ -20,6 +20,7 @@ RUN mkdir -p /var/data/keys && chown -R "$APP_UID:$APP_UID" /var/data
 USER $APP_UID
 
 ENV ASPNETCORE_ENVIRONMENT=Production \
+    DataProtection__KeysPath=/var/data/keys \
     DOTNET_EnableDiagnostics=0
 EXPOSE 10000
 

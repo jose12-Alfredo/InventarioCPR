@@ -278,19 +278,28 @@ if (args.Contains("--check-connections", StringComparer.Ordinal))
 // Add services to the container.
 var identityEnabled = builder.Configuration.GetValue("Security:EnableIdentity", true);
 var anonymousLocalTests = builder.Configuration.GetValue<bool>("Inventory:AllowAnonymousLocalTests");
+var renderEnvironment = builder.Configuration.GetValue<bool>("RENDER");
 var renderDeployment = !builder.Environment.IsDevelopment() &&
-    builder.Configuration["Deployment:Provider"] == "Render";
+    (renderEnvironment || builder.Configuration["Deployment:Provider"] == "Render");
 if (!identityEnabled && (!builder.Environment.IsDevelopment() || !anonymousLocalTests))
     throw new InvalidOperationException("Identity es obligatoria; el modo anónimo exige opt-in explícito de pruebas en Development.");
 if (identityEnabled && anonymousLocalTests)
     throw new InvalidOperationException("No combine Identity con el modo anónimo de pruebas.");
 if (!builder.Environment.IsDevelopment() && !renderDeployment)
     throw new InvalidOperationException("Production solo admite el proveedor de despliegue revisado.");
+if (renderEnvironment && builder.Configuration["RENDER_SERVICE_TYPE"] is { Length: > 0 } serviceType && serviceType != "web")
+    throw new InvalidOperationException("InventarioCPR requiere un Web Service de Render.");
 if (renderDeployment && (builder.Configuration["AllowedHosts"] is null or "" or "*"))
-    throw new InvalidOperationException("Configure AllowedHosts con el hostname público de Render.");
+{
+    var renderHost = builder.Configuration["RENDER_EXTERNAL_HOSTNAME"];
+    if (string.IsNullOrWhiteSpace(renderHost))
+        throw new InvalidOperationException("Configure AllowedHosts con el hostname público de Render.");
+    builder.Configuration["AllowedHosts"] = renderHost;
+}
 
 var port = 0;
-if (renderDeployment && (!int.TryParse(builder.Configuration["PORT"], out port) || port is < 1 or > 65535))
+var portValue = builder.Configuration["PORT"] ?? (renderEnvironment ? "10000" : null);
+if (renderDeployment && (!int.TryParse(portValue, out port) || port is < 1 or > 65535))
     throw new InvalidOperationException("Render debe proporcionar un PORT válido.");
 var listenUrl = renderDeployment
     ? $"http://0.0.0.0:{port}"
@@ -332,7 +341,8 @@ if (renderDeployment)
         options.KnownIPNetworks.Clear();
         options.KnownProxies.Clear();
     });
-    var keysPath = builder.Configuration["DataProtection:KeysPath"];
+    var keysPath = builder.Configuration["DataProtection:KeysPath"] ??
+        (renderEnvironment ? "/var/data/keys" : null);
     if (string.IsNullOrWhiteSpace(keysPath) || !Path.IsPathRooted(keysPath))
         throw new InvalidOperationException("Configure DataProtection:KeysPath con una ruta absoluta persistente.");
     Directory.CreateDirectory(keysPath);

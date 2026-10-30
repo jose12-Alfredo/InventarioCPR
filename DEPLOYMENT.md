@@ -6,7 +6,7 @@ Este documento describe la preparación del repositorio privado y el despliegue 
 
 - La raíz del repositorio es la carpeta que contiene `InventarioCPR.slnx`, `Dockerfile`, `.gitignore` y `.dockerignore`.
 - Desarrollo conserva HTTPS en `https://localhost:7228` y User Secrets locales.
-- Production solo arranca cuando `Deployment__Provider=Render`; usa el `PORT` asignado por Render, HTTP interno y HTTPS externo terminado por el proxy.
+- Production detecta Render mediante su variable nativa `RENDER=true`; usa el `PORT` asignado por la plataforma, HTTP interno y HTTPS externo terminado por el proxy.
 - La aplicación no ejecuta `EnsureCreated`, `Migrate` ni migraciones automáticamente.
 - Las migraciones EF se conservan en el repositorio porque son necesarias para preparar una base autorizada.
 - El despliegue real sigue bloqueado hasta aprobar y ejecutar un procedimiento separado para el esquema, roles y administrador de Production.
@@ -69,17 +69,17 @@ Configurar como secretos o variables del servicio:
 | Variable | Finalidad | Secreta |
 |---|---|---|
 | `ASPNETCORE_ENVIRONMENT=Production` | Entorno ASP.NET Core; también está definido en la imagen | No |
-| `Deployment__Provider=Render` | Habilita exclusivamente la configuración revisada del proxy | No |
-| `AllowedHosts=<servicio>.onrender.com` | Restringe el host público; separar dominios adicionales con `;` | No |
+| `Deployment__Provider=Render` | Override opcional fuera de Render; la plataforma ya proporciona `RENDER=true` | No |
+| `AllowedHosts=<servicio>.onrender.com` | Opcional para el dominio nativo; obligatorio al agregar dominios personalizados, separados con `;` | No |
 | `ConnectionStrings__Database` | Conexión Npgsql de la base Production autorizada, con usuario y contraseña | Sí |
 | `Security__EnableIdentity=true` | Mantiene Identity obligatoria | No |
 | `Inventory__ProductionWritesEnabled=true` | Habilita altas/ediciones solo después de aprobar esquema y operación | No |
-| `DataProtection__KeysPath=/var/data/keys` | Conserva cookies y antiforgery entre reinicios | No |
+| `DataProtection__KeysPath=/var/data/keys` | Ruta predeterminada de la imagen; puede sobrescribirse si cambia el montaje | No |
 | `Cloudinary__CloudName` | Nombre de cuenta Cloudinary | Según política |
 | `Cloudinary__ApiKey` | Clave API Cloudinary | Sí |
 | `Cloudinary__ApiSecret` | Secreto API Cloudinary | Sí |
 
-No configurar `PORT`: Render lo proporciona. No configurar un certificado Kestrel ni una contraseña PFX: Render termina TLS y reenvía el esquema HTTPS. La aplicación confía los encabezados reenviados únicamente en el modo Render explícito y escucha HTTP dentro del contenedor.
+No es necesario configurar `PORT`: Render usa `10000` de forma predeterminada y puede proporcionar otro valor. Tampoco configurar un certificado Kestrel ni una contraseña PFX: Render termina TLS y reenvía el esquema HTTPS. La aplicación reconoce `RENDER=true`, confía los encabezados reenviados únicamente en ese modo y escucha HTTP dentro del contenedor. `RENDER_EXTERNAL_HOSTNAME` restringe automáticamente el host nativo; configurar `AllowedHosts` manualmente al añadir un dominio personalizado.
 
 La cadena `ConnectionStrings__Database` se valida con TLS `VerifyFull`. Guardarla solo en el panel de variables de Render y usar una credencial Neon con privilegios mínimos. No reutilizar User Secrets ni pegar la cadena en archivos, commits, incidencias o logs.
 
