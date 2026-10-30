@@ -15,6 +15,7 @@ public static class SecurityEndpoints
         app.MapGet("/acceso", (HttpContext context, IAntiforgery antiforgery) =>
         {
             var token = HtmlEncoder.Default.Encode(antiforgery.GetAndStoreTokens(context).RequestToken ?? "");
+            var returnUrl = HtmlEncoder.Default.Encode(NormalizeReturnUrl(context.Request.Query["ReturnUrl"]));
             var failed = context.Request.Query.ContainsKey("error") ? "<p role=\"alert\">No se pudo iniciar sesión. Compruebe los datos o espere si la cuenta está bloqueada.</p>" : "";
             return Results.Content($$"""
                 <!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -27,6 +28,7 @@ public static class SecurityEndpoints
                 :focus-visible{outline:2px solid #6d0dff;outline-offset:3px}
                 </style></head><body><main><h1>InventarioCPR</h1><p>Acceso para cuentas autorizadas.</p>{{failed}}
                 <form method="post" action="/acceso"><input type="hidden" name="__RequestVerificationToken" value="{{token}}">
+                <input type="hidden" name="returnUrl" value="{{returnUrl}}">
                 <label for="usuario">Usuario o correo electrónico</label><input id="usuario" name="usuario" autocomplete="username" required maxlength="256">
                 <label for="clave">Contraseña</label><input id="clave" name="clave" type="password" autocomplete="current-password" required>
                 <button type="submit">Iniciar sesión</button></form></main></body></html>
@@ -40,13 +42,16 @@ public static class SecurityEndpoints
             var form = await context.Request.ReadFormAsync();
             var name = form["usuario"].ToString().Trim();
             var password = form["clave"].ToString();
-            if (name.Length > 256 || password.Length > 1024) return Results.Redirect("/acceso?error=1");
+            var returnUrl = NormalizeReturnUrl(form["returnUrl"]);
+            if (name.Length > 256 || password.Length > 1024) return Results.Redirect(LoginErrorUrl(returnUrl));
             var account = await users.FindByNameAsync(name);
             if (account is null && name.Contains('@'))
                 account = await users.FindByEmailAsync(name);
-            if (account?.IsActive != true) return Results.Redirect("/acceso?error=1");
+            if (account?.IsActive != true) return Results.Redirect(LoginErrorUrl(returnUrl));
             var result = await signIn.PasswordSignInAsync(account, password, isPersistent: false, lockoutOnFailure: true);
-            return Results.Redirect(result.Succeeded ? "/inventario" : "/acceso?error=1");
+            return result.Succeeded
+                ? Results.LocalRedirect(returnUrl)
+                : Results.Redirect(LoginErrorUrl(returnUrl));
         }).AllowAnonymous().RequireRateLimiting("login");
 
         app.MapPost("/salir", async (HttpContext context, IAntiforgery antiforgery,
@@ -134,4 +139,18 @@ public static class SecurityEndpoints
         try { await antiforgery.ValidateRequestAsync(context); return true; }
         catch (AntiforgeryValidationException) { return false; }
     }
+
+    internal static string NormalizeReturnUrl(string? returnUrl)
+    {
+        if (string.IsNullOrWhiteSpace(returnUrl) || returnUrl[0] != '/' ||
+            returnUrl.StartsWith("//", StringComparison.Ordinal) ||
+            returnUrl.StartsWith("/\\", StringComparison.Ordinal) ||
+            returnUrl.Any(char.IsControl))
+            return "/";
+
+        return returnUrl;
+    }
+
+    private static string LoginErrorUrl(string returnUrl) =>
+        $"/acceso?error=1&ReturnUrl={Uri.EscapeDataString(returnUrl)}";
 }
