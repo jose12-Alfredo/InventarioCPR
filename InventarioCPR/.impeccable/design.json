@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-26T00:00:00Z",
+  "title": "Design System: InventarioCPR",
+  "extensions": {
+    "colorMeta": {
+      "cpr-violet": {"role": "primary", "displayName": "Violeta CPR", "canonical": "#6d0dff", "tonalRamp": ["#21004d", "#3f087f", "#6d0dff", "#8b44ff", "#aa78ff", "#c9adff", "#e4d8ff", "#f5f0ff"]},
+      "cpr-violet-dark": {"role": "primary", "displayName": "Violeta profundo", "canonical": "#3f087f", "tonalRamp": ["#17002e", "#290653", "#3f087f", "#5a20a4", "#7c4ac1", "#a47dde", "#cfb9ef", "#f2eafa"]},
+      "cpr-orange": {"role": "secondary", "displayName": "Naranja de registro", "canonical": "#f39400", "tonalRamp": ["#3c2100", "#704000", "#a96000", "#d98000", "#f39400", "#ffb94c", "#ffda96", "#fff3df"]},
+      "canvas": {"role": "neutral", "displayName": "Lienzo frio", "canonical": "#f6f7fb", "tonalRamp": ["#24262b", "#4d515b", "#777c87", "#a6aab3", "#c9ccd3", "#dee1e8", "#eef0f5", "#f6f7fb"]},
+      "ink": {"role": "neutral", "displayName": "Tinta", "canonical": "#24262b", "tonalRamp": ["#17181b", "#24262b", "#484b52", "#6b6f78", "#92969e", "#b9bcc2", "#dee1e8", "#f6f7fb"]}
+    },
+    "typographyMeta": {
+      "display": {"displayName": "Display", "purpose": "Titulos principales cortos."},
+      "headline": {"displayName": "Headline", "purpose": "Encabezados de seccion y mensajes operativos."},
+      "body": {"displayName": "Body", "purpose": "Lectura sostenida y contenido de formularios."},
+      "label": {"displayName": "Label", "purpose": "Etiquetas, estados y metadatos."}
+    },
+    "shadows": [
+      {"name": "ambient-low", "value": "0 1px 2px rgba(36,38,43,.05), 0 8px 24px rgba(63,8,127,.04)", "purpose": "Paneles operativos."},
+      {"name": "ambient-raised", "value": "0 8px 16px rgba(36,38,43,.06), 0 24px 48px rgba(63,8,127,.07)", "purpose": "Bloques principales y menus flotantes."}
+    ],
+    "motion": [
+      {"name": "state-fast", "value": "160ms ease-out", "purpose": "Hover y cambios de estado de controles."}
+    ],
+    "breakpoints": [
+      {"name": "compact", "value": "36rem"},
+      {"name": "mobile-shell", "value": "48rem"},
+      {"name": "tablet", "value": "52rem"},
+      {"name": "stacked", "value": "68rem"}
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Accion principal violeta con elevacion ambiental.",
+      "html": "<button class=\"ds-btn-primary\">Abrir inventario</button>",
+      "css": ".ds-btn-primary{min-height:2.875rem;padding:.7rem 1.05rem;border:1px solid transparent;border-radius:var(--radius-sm,.5rem);background:var(--cpr-violet,#6d0dff);color:#fff;font:680 1rem Aptos,'Segoe UI',sans-serif;box-shadow:0 5px 12px rgba(63,8,127,.15);transition:background-color 160ms ease-out,transform 160ms ease-out}.ds-btn-primary:hover{background:var(--cpr-violet-dark,#3f087f);transform:translateY(-1px)}.ds-btn-primary:focus-visible{outline:2px solid var(--cpr-violet,#6d0dff);outline-offset:3px}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "description": "Accion secundaria neutra y delimitada.",
+      "html": "<button class=\"ds-btn-secondary\">Limpiar</button>",
+      "css": ".ds-btn-secondary{min-height:2.875rem;padding:.7rem 1.05rem;border:1px solid var(--cpr-border,#dee1e8);border-radius:.5rem;background:#fff;color:var(--cpr-text,#24262b);font:680 1rem Aptos,'Segoe UI',sans-serif}.ds-btn-secondary:hover{background:var(--cpr-bg,#f6f7fb)}.ds-btn-secondary:focus-visible{outline:2px solid var(--cpr-violet,#6d0dff);outline-offset:3px}"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Campo claro con etiqueta superior.",
+      "html": "<label class=\"ds-field\">Buscar equipo<input placeholder=\"Codigo, categoria, marca o modelo\"></label>",
+      "css": ".ds-field{display:grid;gap:.45rem;color:#4e535d;font:680 .78rem Aptos,'Segoe UI',sans-serif}.ds-field input{min-height:2.75rem;padding:.65rem .8rem;border:1px solid var(--cpr-border,#dee1e8);border-radius:.5rem;background:var(--cpr-bg,#f6f7fb);color:var(--cpr-text,#24262b);font:400 1rem Aptos,'Segoe UI',sans-serif}.ds-field input:focus-visible{outline:2px solid var(--cpr-violet,#6d0dff);outline-offset:2px}"
+    },
+    {
+      "name": "Status Badge",
+      "kind": "chip",
+      "description": "Estado breve con texto, punto y borde redundantes.",
+      "html": "<span class=\"ds-status\"><i></i>Fase de interfaz</span>",
+      "css": ".ds-status{display:inline-flex;align-items:center;gap:.5rem;padding:.35rem .7rem;border:1px solid #e9c47f;border-radius:999px;background:#fff3df;color:#855000;font:650 .78rem Aptos,'Segoe UI',sans-serif}.ds-status i{width:.45rem;height:.45rem;border-radius:50%;background:currentColor}"
+    },
+    {
+      "name": "Navigation Item",
+      "kind": "nav",
+      "description": "Elemento activo invertido con punto de registro.",
+      "html": "<a class=\"ds-nav-active\" href=\"#\">Inventario</a>",
+      "css": ".ds-nav-active{position:relative;display:block;padding:.65rem;border-radius:.5rem;background:#fff;color:var(--cpr-violet-dark,#3f087f);font:610 .88rem Aptos,'Segoe UI',sans-serif;text-decoration:none}.ds-nav-active:after{content:'';position:absolute;right:-.2rem;top:50%;width:.45rem;height:.45rem;border-radius:50%;background:var(--cpr-orange,#f39400);transform:translateY(-50%)}.ds-nav-active:focus-visible{outline:2px solid #fff;outline-offset:3px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "La Mesa de Pruebas",
+    "overview": "InventarioCPR combina la familiaridad de una herramienta empresarial con la precision de una prueba de imprenta. La interfaz es clara, medida y orientada al trabajo prolongado.",
+    "keyCharacteristics": ["Shell violeta estable sobre un lienzo gris frio.", "Superficies blancas con bordes finos y profundidad ambiental.", "Naranja reservado para hitos y puntos de registro.", "Controles web familiares y estados redundantes."],
+    "rules": [
+      {"name": "The Registration Ink Rule", "body": "El naranja senala un hito concreto; nunca compite con la accion primaria violeta.", "section": "colors"},
+      {"name": "The Honest State Rule", "body": "Estado, texto e iconografia deben seguir siendo comprensibles sin depender solo del color.", "section": "colors"},
+      {"name": "The Border First Rule", "body": "Una superficie se delimita primero con tono y borde; la sombra solo refuerza jerarquia real.", "section": "elevation"}
+    ],
+    "dos": ["Reservar el naranja para hitos de registro y estados con significado.", "Mostrar claramente cuando una funcion aun no esta conectada.", "Reducir columnas por prioridad y apilar formularios en pantallas estrechas."],
+    "donts": ["Inventar metricas, activos o actividad empresarial para llenar estados vacios.", "Convertir marcas de imprenta en decoracion abundante.", "Usar el color como unico indicador de estado.", "Presentar modulos futuros como acciones disponibles."]
+  }
+}

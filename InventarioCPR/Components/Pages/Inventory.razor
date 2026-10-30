@@ -1,0 +1,14 @@
+@page "/inventario"
+@using InventarioCPR.Components.Inventory
+
+<PageTitle>Inventario | InventarioCPR</PageTitle>
+
+<div class="page-heading inventory-heading">
+    <div>
+        <h1>Inventario</h1>
+        <p>Consulte expedientes y registre equipos de prueba.</p>
+    </div>
+    <StatusBadge Tone="progress">Datos ficticios · rama de pruebas</StatusBadge>
+</div>
+
+<TechnicalFormPreview @rendermode="InteractiveServer" />

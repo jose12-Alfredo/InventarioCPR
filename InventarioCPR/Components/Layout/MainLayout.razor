@@ -1,0 +1,70 @@
+﻿@inherits LayoutComponentBase
+@inject IConfiguration Configuration
+
+<a class="skip-link" href="#main-content">Saltar al contenido</a>
+
+<div class="app-shell">
+    <aside class="sidebar" aria-label="Navegacion principal">
+        <div class="brand-lockup">
+            <span class="brand-mark" aria-hidden="true"><span></span></span>
+            <span>
+                <strong>InventarioCPR</strong>
+                <small>Consorcio Publicitario</small>
+            </span>
+        </div>
+        <NavMenu />
+        <div class="sidebar-foot">
+            <span class="sidebar-foot__mark" aria-hidden="true"></span>
+            <span>Inventario local<br /><small>Solo datos de prueba</small></span>
+        </div>
+    </aside>
+
+    <div class="workspace">
+        <header class="topbar">
+            <details class="mobile-menu">
+                <summary aria-label="Abrir menu de navegacion">
+                    <AppIcon Name="menu" />
+                    <span class="mobile-brand">InventarioCPR</span>
+                </summary>
+                <div class="mobile-menu__panel">
+                    <NavMenu />
+                </div>
+            </details>
+
+            <div class="topbar-title">
+                <span>Control de activos</span>
+                <small>Entorno interno</small>
+            </div>
+
+            @if (Configuration.GetValue("Security:EnableIdentity", true))
+            {
+                <AuthorizeView>
+                    <Authorized Context="account">
+                        <div class="user-space" aria-label="Espacio de usuario">
+                            <span class="user-copy"><strong>@account.User.Identity?.Name</strong></span>
+                            @if (account.User.IsInRole("Administrador")) { <a href="/admin/usuarios">Usuarios</a> }
+                            <form action="/salir" method="post"><AntiforgeryToken /><button class="btn btn-secondary" type="submit">Cerrar sesión</button></form>
+                        </div>
+                    </Authorized>
+                </AuthorizeView>
+            }
+            else
+            {
+                <div class="user-space" aria-label="Espacio de usuario">
+                    <span class="user-avatar" aria-hidden="true">CP</span>
+                    <span class="user-copy"><strong>Pruebas</strong><small>Acceso local</small></span>
+                </div>
+            }
+        </header>
+
+        <main id="main-content" class="main-content" tabindex="-1">
+            @Body
+        </main>
+    </div>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    Ocurrio un error inesperado.
+    <a href="." class="reload">Volver a cargar</a>
+    <button type="button" class="dismiss" aria-label="Cerrar">Cerrar</button>
+</div>

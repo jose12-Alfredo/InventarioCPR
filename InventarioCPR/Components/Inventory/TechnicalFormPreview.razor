@@ -1,0 +1,978 @@
+@using InventarioCPR.Application.Inventory
+@using System.Globalization
+@using Microsoft.JSInterop
+@inject InventoryService Inventory
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<section class="inventory-workbench" aria-label="Consulta y registro de equipos">
+    @if (details is null)
+    {
+        <div class="inventory-workbench__toolbar">
+            <div class="inventory-workbench__heading">
+                <div><h2 id="inventory-list-title">Equipos registrados</h2><p>Seleccione un equipo para consultar su expediente.</p></div>
+                <div class="inventory-workbench__buttons">
+                    <button type="button" class="btn btn-secondary" @onclick="() => OpenNewAsync(true)" disabled="@(!interactiveReady || !canWrite)">Registro rápido</button>
+                    <button type="button" class="btn btn-primary" @onclick="() => OpenNewAsync(false)" disabled="@(!interactiveReady || !canWrite)">Nuevo equipo</button>
+                </div>
+            </div>
+            <div class="inventory-workbench__filters" role="search" aria-label="Filtrar equipos">
+                <div class="field"><label for="inventory-search">Buscar equipo</label>
+                    <input id="inventory-search" type="search" placeholder="Código, equipo, marca o modelo" disabled="@(!interactiveReady)" @bind="search" @bind:event="oninput" @bind:after="DebouncedRefreshAsync" /></div>
+                <div class="field"><label for="inventory-category">Categoría</label>
+                    <select id="inventory-category" disabled="@(!interactiveReady)" @bind="categoryFilter" @bind:after="ApplyFiltersAsync">
+                        <option value="">Todas</option>
+                        <option value="desktop">Computadora de escritorio</option><option value="laptop">Laptop</option>
+                        <option value="monitor">Monitor</option><option value="camera">Cámara</option>
+                        <option value="external-disk">Disco externo</option><option value="peripheral">Periférico</option>
+                        <option value="recording">Equipo de grabación</option><option value="other">Otro dispositivo</option>
+                    </select></div>
+                <div class="field"><label for="inventory-condition">Condición</label>
+                    <select id="inventory-condition" disabled="@(!interactiveReady)" @bind="conditionFilter" @bind:after="ApplyFiltersAsync">
+                        <option value="">Todas</option><option value="physical">Con condición física</option>
+                        <option value="operational">Con condición operativa</option><option value="unrecorded">Sin inspección</option>
+                        @foreach (var option in conditionOptions)
+                        {
+                            <option value="@option.Value">@option.Label</option>
+                        }
+                    </select></div>
+                <button type="button" class="btn btn-secondary" disabled="@(!interactiveReady)" @onclick="ClearFiltersAsync">Limpiar</button>
+            </div>
+        </div>
+        @if (error is not null) { <p class="technical-preview__feedback technical-preview__feedback--error" role="alert">@error</p> }
+        @if (success is not null) { <p class="technical-preview__feedback" role="status">@success</p> }
+        @if (loading) { <p role="status" class="inventory-workbench__empty">Cargando equipos…</p> }
+        else if (rows.Count == 0)
+        { <p class="inventory-workbench__empty">No hay equipos para estos filtros. Pruebe otra búsqueda o registre el primero.</p> }
+        else
+        {
+            <p class="inventory-workbench__count" role="status">@(total > InventoryService.PageSize ? $"Mostrando {currentPage * InventoryService.PageSize + 1}–{currentPage * InventoryService.PageSize + rows.Count} de {total} equipos" : $"{total} equipo{(total == 1 ? "" : "s")}")</p>
+            <table class="inventory-workbench__table">
+                <thead><tr><th scope="col">Código</th><th scope="col">Equipo</th><th scope="col">Categoría</th><th scope="col">Condición</th><th scope="col"><span class="sr-only">Acción</span></th></tr></thead>
+                <tbody>
+                    @foreach (var row in rows)
+                    {
+                        <tr @key="row.Id"><td><strong>@row.Code</strong></td><td>@row.Name<br /><small>@(row.Model ?? row.Brand ?? "Sin modelo registrado")</small></td>
+                            <td>@row.Category</td><td>@(row.PhysicalCondition ?? row.OperationalCondition ?? "Sin inspección")</td>
+                            <td><button type="button" class="inventory-workbench__link" disabled="@(!interactiveReady)" @onclick="() => OpenAsync(row.Id)">Ver expediente <span class="sr-only">de @row.Code</span></button></td></tr>
+                    }
+                </tbody>
+            </table>
+            <ul class="inventory-workbench__cards">
+                @foreach (var row in rows)
+                {
+                    <li @key="row.Id"><button type="button" class="inventory-workbench__card" disabled="@(!interactiveReady)" @onclick="() => OpenAsync(row.Id)" aria-label="Ver expediente de @row.Code, @row.Name">
+                        <span class="inventory-workbench__card-top"><strong>@row.Code</strong><span>@row.Category</span></span>
+                        <b>@row.Name</b><small>@(row.PhysicalCondition ?? row.OperationalCondition ?? "Sin inspección")</small>
+                        <span class="inventory-workbench__card-action">Ver expediente</span>
+                    </button></li>
+                }
+            </ul>
+            @if (total > InventoryService.PageSize)
+            {
+                <nav class="inventory-workbench__pagination" aria-label="Páginas de equipos">
+                    <button type="button" class="btn btn-secondary" disabled="@(currentPage == 0)" @onclick="() => LoadPageAsync(currentPage - 1)">Anterior</button>
+                    <span>Página @(currentPage + 1) de @((total + InventoryService.PageSize - 1) / InventoryService.PageSize)</span>
+                    <button type="button" class="btn btn-secondary" disabled="@((currentPage + 1) * InventoryService.PageSize >= total)" @onclick="() => LoadPageAsync(currentPage + 1)">Siguiente</button>
+                </nav>
+            }
+        }
+    }
+    else
+    {
+        <div class="inventory-workbench__detail" aria-labelledby="equipment-detail-title">
+            <div class="inventory-workbench__heading">
+                <div><button type="button" class="inventory-workbench__back" @onclick="BackToList">Volver al listado</button>
+                    <h2 id="equipment-detail-title">@details.Input.Code <span>· @details.Input.Name</span></h2>
+                    <p>@CategoryLabel · expediente de prueba</p></div>
+                <button type="button" class="btn btn-primary" @onclick="OpenEditAsync" disabled="@(!interactiveReady || !canWrite)">Editar equipo</button>
+            </div>
+            <nav class="inventory-workbench__detail-tabs" aria-label="Secciones del expediente">
+                @for (var i = 0; i < detailLabels.Length; i++)
+                {
+                    var index = i;
+                    <button type="button" class="@(detailTab == index ? "is-active" : "")" aria-pressed="@(detailTab == index ? "true" : "false")" @onclick="() => detailTab = index">@detailLabels[index]</button>
+                }
+            </nav>
+            <div class="inventory-workbench__detail-content">
+                @if (detailTab == 0)
+                { <dl class="inventory-workbench__facts"><div><dt>Código</dt><dd>@details.Input.Code</dd></div><div><dt>Categoría</dt><dd>@CategoryLabel</dd></div>
+                    <div><dt>Marca</dt><dd>@(details.Input.Brand ?? "No registrada")</dd></div><div><dt>Modelo</dt><dd>@(details.Input.Model ?? "No registrado")</dd></div>
+                    <div><dt>Número de serie</dt><dd>@(details.Input.Serial ?? "No registrado")</dd></div></dl> }
+                else if (detailTab == 1)
+                { <dl class="inventory-workbench__facts"><div><dt>Procesador</dt><dd>@(details.Input.ProcessorName ?? details.Input.ProcessorModel ?? "No registrado")</dd></div>
+                    <div><dt>RAM total</dt><dd>@FormatCapacity(details.Input.TotalRamGb)</dd></div><div><dt>Módulos de RAM</dt><dd>@(details.Input.RamModules.Count == 0 ? "Sin detalle" : string.Join(" + ", details.Input.RamModules.Select(x => FormatCapacity(x.CapacityGb))))</dd></div>
+                    <div><dt>Sistema operativo</dt><dd>@(details.Input.OperatingSystem ?? "No registrado")</dd></div></dl>
+                    <h3>Unidades de almacenamiento</h3>
+                    @if (details.Input.StorageUnits.Count == 0) { <p>No hay unidades registradas.</p> }
+                    else { <ul>@foreach (var unit in details.Input.StorageUnits) { <li>@(unit.Technology ?? "Disco") · @(unit.Interface ?? "interfaz desconocida") · @FormatCapacity(unit.Capacity, unit.Unit)</li> }</ul> }
+                    <p class="technical-preview__note">Los atributos especializados por categoría todavía no están habilitados.</p> }
+                else if (detailTab == 2)
+                { <dl class="inventory-workbench__facts"><div><dt>Sede</dt><dd>@(details.Input.Site ?? "No registrada")</dd></div><div><dt>Ubicación física</dt><dd>@(details.Input.Location ?? "No registrada")</dd></div>
+                    <div><dt>Condición física</dt><dd>@(details.Input.PhysicalCondition ?? "No registrada")</dd></div><div><dt>Condición operativa</dt><dd>@(details.Input.OperationalCondition ?? "No registrada")</dd></div>
+                    <div><dt>Última persona que verificó</dt><dd>@(details.Input.Verifier ?? "Sin verificación")</dd></div></dl>
+                    <p>La custodia y las asignaciones todavía no están habilitadas.</p> }
+                else if (detailTab == 3)
+                { <h3>Historial técnico y observaciones</h3>
+                    @if (details.History.Count == 0) { <p>No hay revisiones ni observaciones registradas.</p> }
+                    else { <ul class="inventory-workbench__history">@foreach (var entry in details.History) { <li>@entry</li> }</ul> } }
+                else { <h3>Evidencias</h3><p>La carga y consulta de fotografías aún no están habilitadas.</p> }
+            </div>
+        </div>
+    }
+
+    <dialog @ref="formDialog" class="technical-preview @(quick ? "technical-preview--quick" : "")" aria-labelledby="technical-preview-title" aria-describedby="form-summary">
+    <form @onsubmit="() => SaveAsync(true)" @onsubmit:preventDefault @oninput="MarkDirty" @onchange="MarkDirty">
+    <div class="technical-preview__top">
+    <header class="technical-preview__header">
+        <div>
+            <h2 id="technical-preview-title">@(editingId is null ? quick ? "Registro rápido" : "Nuevo equipo" : "Editar equipo")</h2>
+            <p id="form-summary">@(quick ? "Código, categoría y nombre. Podrá completar el resto después." : "Datos de prueba · test-migracion-inicial")</p>
+            @if (!canWrite) { <p role="status">Solo lectura: su perfil o la rama de pruebas no permiten guardar.</p> }
+        </div>
+        <button type="button" class="technical-preview__close" aria-label="Cerrar formulario" @onclick="RequestCloseAsync">Cerrar</button>
+    </header>
+    @if (!quick)
+    {
+        <div class="technical-preview__tabs" role="tablist" aria-label="Secciones del formulario" @onkeydown="HandleTabKeyDown">
+            @for (var i = 0; i < tabLabels.Length; i++)
+            {
+                var index = i;
+                <button type="button" id="form-tab-@index" role="tab" aria-selected="@(activeTab == index ? "true" : "false")"
+                        aria-controls="form-panel" tabindex="@(activeTab == index ? 0 : -1)"
+                        class="@(activeTab == index ? "is-active" : "")" @onclick="() => SetTab(index)">@(index + 1). @tabLabels[index]</button>
+            }
+        </div>
+        <div class="technical-preview__mobile-progress" aria-live="polite"><span>Paso @(activeTab + 1) de 3</span><strong>@tabLabels[activeTab]</strong><span class="technical-preview__progress-track"><span style="width:@((activeTab + 1) * 100 / 3)%"></span></span></div>
+    }
+    </div>
+
+    <div class="technical-preview__body technical-preview__body--form" role="tabpanel" id="form-panel" aria-labelledby="@(quick ? "technical-preview-title" : $"form-tab-{activeTab}")">
+        @if (error is not null) { <p class="technical-preview__feedback technical-preview__feedback--error" role="alert" tabindex="-1">@error</p> }
+        @if (success is not null) { <p class="technical-preview__feedback" role="status">@success</p> }
+        @if (activeTab == 0)
+        {
+        <fieldset class="technical-preview__section technical-preview__section--first">
+            <legend>Identidad del activo</legend>
+            <div class="technical-preview__grid">
+                <div class="field">
+                    <label for="asset-code">Código único <span class="technical-preview__required">obligatorio</span></label>
+                    <input id="asset-code" type="text" autocomplete="off" maxlength="80" required @bind="assetCode" @bind:event="oninput" aria-describedby="asset-code-help" />
+                    <small id="asset-code-help">Se aceptan códigos existentes como EQ_1.</small>
+                </div>
+                <div class="field">
+                    <label for="asset-name">Nombre descriptivo <span class="technical-preview__required">obligatorio</span></label>
+                    <input id="asset-name" type="text" autocomplete="off" maxlength="200" required @bind="assetName" @bind:event="oninput" />
+                </div>
+                <div class="field technical-preview__category">
+                    <label for="technical-category">Categoría <span class="technical-preview__required">obligatoria</span></label>
+                    <select id="technical-category" required disabled="@(editingId is not null)" @bind="selectedCategory" aria-describedby="technical-category-help">
+                        <option value="">Seleccione una categoría</option>
+                        <option value="desktop">Computadora de escritorio</option>
+                        <option value="laptop">Laptop</option>
+                        <option value="monitor">Monitor</option>
+                        <option value="camera">Cámara</option>
+                        <option value="external-disk">Disco externo</option>
+                        <option value="peripheral">Periférico</option>
+                        <option value="recording">Equipo de grabación</option>
+                        <option value="other">Otro dispositivo</option>
+                    </select>
+                    <small id="technical-category-help">La categoría no puede cambiarse desde este formulario después del alta.</small>
+                </div>
+            </div>
+        </fieldset>
+        }
+
+        @if (selectedCategory != "" && !quick)
+        {
+            <div class="technical-preview__content">
+                @if (activeTab == 0)
+                {
+                <fieldset class="technical-preview__section">
+                    <legend>Datos de identificación complementarios</legend>
+                    <div class="technical-preview__grid">
+                        <div class="field">
+                            <label for="technical-brand">Marca</label>
+                            <input id="technical-brand" type="text" autocomplete="off" @bind="common.Brand" />
+                        </div>
+                        <div class="field">
+                            <label for="technical-model">Modelo</label>
+                            <input id="technical-model" type="text" autocomplete="off" @bind="common.Model" />
+                        </div>
+                        <div class="field">
+                            <label for="technical-serial">Número de serie <span class="technical-preview__optional">si se conoce</span></label>
+                            <input id="technical-serial" type="text" autocomplete="off" @bind="common.Serial" @bind:event="oninput" disabled="@(common.SerialState == "not-applicable")" />
+                            <label class="technical-preview__status-label" for="serial-status">Disponibilidad del número de serie</label>
+                            <select id="serial-status" @bind="common.SerialState" @bind:after="OnSerialStatusChanged">
+                                <option value="unrecorded">Informado o no registrado</option>
+                                <option value="pending">Pendiente de verificar</option>
+                                <option value="not-applicable">No aplica</option>
+                            </select>
+                        </div>
+                    </div>
+                    <p class="technical-preview__note">La serie puede completarse después.</p>
+                </fieldset>
+                }
+
+                @if (activeTab == 2)
+                {
+                <fieldset class="technical-preview__section">
+                    <legend>Custodia, ubicación y condición</legend>
+                    <p class="technical-preview__note">La custodia requiere asignación; ubicación y condición se registran por separado.</p>
+                    <div class="technical-preview__grid">
+                        <div class="field">
+                            <label for="asset-location">Ubicación física <span class="technical-preview__optional">si se conoce</span></label>
+                            <input id="asset-location" type="text" maxlength="160" @bind="common.Location" @bind:event="oninput" disabled="@(common.LocationState == "not-applicable")" />
+                            @if (string.IsNullOrWhiteSpace(common.Location))
+                            {
+                                <label class="technical-preview__status-label" for="location-status">Disponibilidad de la ubicación</label>
+                                <select id="location-status" @bind="common.LocationState" @bind:after="OnLocationStatusChanged"><option value="unrecorded">No registrado</option><option value="pending">Pendiente de verificar</option><option value="not-applicable">No aplica</option></select>
+                            }
+                        </div>
+                        <div class="field">
+                            <label for="asset-city">Sede <span class="technical-preview__optional">junto con la ubicación</span></label>
+                            <input id="asset-city" type="text" maxlength="120" @bind="common.City" />
+                        </div>
+                        <div class="field">
+                            <label for="physical-state">Condición física</label>
+                            <input id="physical-state" type="text" maxlength="100" placeholder="Describa lo observado" @bind="common.PhysicalCondition" disabled="@(common.PhysicalState == "not-applicable")" />
+                            @if (string.IsNullOrEmpty(common.PhysicalCondition))
+                            {
+                                <label class="technical-preview__status-label" for="physical-status">Disponibilidad de la condición física</label>
+                                <select id="physical-status" @bind="common.PhysicalState" @bind:after="OnPhysicalStatusChanged"><option value="unrecorded">No registrada</option><option value="pending">Pendiente de verificar</option><option value="not-applicable">No aplica</option></select>
+                            }
+                        </div>
+                        <div class="field">
+                            <label for="operational-state">Condición operativa</label>
+                            <input id="operational-state" type="text" maxlength="100" placeholder="Describa lo observado" @bind="common.OperationalCondition" disabled="@(common.OperationalState == "not-applicable")" />
+                            @if (string.IsNullOrEmpty(common.OperationalCondition))
+                            {
+                                <label class="technical-preview__status-label" for="operational-status">Disponibilidad de la condición operativa</label>
+                                <select id="operational-status" @bind="common.OperationalState" @bind:after="OnOperationalStatusChanged"><option value="unrecorded">No registrada</option><option value="pending">Pendiente de verificar</option><option value="not-applicable">No aplica</option></select>
+                            }
+                        </div>
+                    </div>
+                    <div class="field technical-preview__wide"><label for="condition-inspector">Persona que inspecciona <span class="technical-preview__optional">si registra condición ahora</span></label>
+                        <input id="condition-inspector" type="text" maxlength="200" @bind="common.Inspector" />
+                    </div>
+                    <p class="technical-preview__note">La condición se registra con la hora real del guardado. El catálogo definitivo de estados sigue pendiente de aprobación.</p>
+                </fieldset>
+                }
+
+                @if (activeTab == 1 && selectedCategory is "desktop" or "laptop")
+                {
+                    <fieldset class="technical-preview__section">
+                        <legend>Procesador y memoria</legend>
+                        <div class="technical-preview__grid">
+                            <div class="field">
+                                <label for="processor-maker">Fabricante del procesador</label>
+                                <input id="processor-maker" type="text" @bind="Current.ProcessorManufacturer" />
+                            </div>
+                            <div class="field">
+                                <label for="processor-model">Modelo del procesador</label>
+                                <input id="processor-model" type="text" @bind="Current.ProcessorModel" />
+                            </div>
+                            <div class="field">
+                                <label for="processor-name">Denominación comercial</label>
+                                <input id="processor-name" type="text" @bind="Current.ProcessorName" />
+                            </div>
+                            <div class="field">
+                                <label for="ram-total">RAM total <span class="technical-preview__optional">GB</span></label>
+                                <input id="ram-total" type="number" min="0.01" step="any" inputmode="decimal" @bind="Current.TotalRamGb" disabled="@(Current.RamState == "not-applicable")" />
+                                @if (Current.TotalRamGb is null)
+                                {
+                                    <label class="technical-preview__status-label" for="ram-status">Disponibilidad de la RAM</label>
+                                    <select id="ram-status" @bind="Current.RamState" @bind:after="OnRamStatusChanged"><option value="unrecorded">No registrada</option><option value="pending">Pendiente de verificar</option><option value="not-applicable">No aplica</option></select>
+                                }
+                            </div>
+                        </div>
+                        <div class="technical-preview__list-head">
+                            <div>
+                                <h3>Módulos de RAM</h3>
+                                <p>Opcionales si todavía no se conoce su distribución.</p>
+                            </div>
+                            <button type="button" class="btn btn-secondary" @onclick="AddRamModule">Añadir módulo</button>
+                        </div>
+                        @foreach (var module in Current.RamModules)
+                        {
+                            <div class="technical-preview__item" @key="module.Id">
+                                <div class="field">
+                                    <label for="ram-@module.Id">Capacidad <span class="technical-preview__optional">GB</span></label>
+                                    <input id="ram-@module.Id" type="number" min="0.01" step="any" inputmode="decimal" @bind="module.Capacity" />
+                                </div>
+                                <button type="button" class="btn btn-secondary" aria-label="Quitar módulo de RAM" @onclick="() => Current.RamModules.Remove(module)">Quitar</button>
+                            </div>
+                        }
+                    </fieldset>
+
+                    <fieldset class="technical-preview__section">
+                        <legend>Almacenamiento y software</legend>
+                        <div class="technical-preview__list-head">
+                            <div>
+                                <h3>Unidades instaladas</h3>
+                                <p>Registre una fila por disco conocido.</p>
+                            </div>
+                            <button type="button" class="btn btn-secondary" @onclick="AddStorageUnit">Añadir unidad</button>
+                        </div>
+                        @foreach (var unit in Current.StorageUnits)
+                        {
+                            <div class="technical-preview__item technical-preview__item--storage" @key="unit.Id">
+                                <div class="field">
+                                    <label for="drive-type-@unit.Id">Tipo</label>
+                                    <select id="drive-type-@unit.Id" @bind="unit.Type">
+                                        <option value="">Seleccione tipo</option>
+                                        <option value="SSD">SSD</option>
+                                        <option value="HDD">HDD</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label for="drive-interface-@unit.Id">Interfaz <span class="technical-preview__optional">si se conoce</span></label>
+                                    <select id="drive-interface-@unit.Id" @bind="unit.Interface">
+                                        <option value="">No registrada</option>
+                                        <option value="NVMe">NVMe</option>
+                                        <option value="SATA">SATA</option>
+                                        <option value="USB">USB</option>
+                                        <option value="other">Otra</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label for="drive-capacity-@unit.Id">Capacidad</label>
+                                    <input id="drive-capacity-@unit.Id" type="number" min="0.01" step="any" inputmode="decimal" @bind="unit.Capacity" />
+                                </div>
+                                <div class="field">
+                                    <label for="drive-unit-@unit.Id">Unidad</label>
+                                    <select id="drive-unit-@unit.Id" @bind="unit.Unit">
+                                        <option value="GB">GB</option>
+                                        <option value="TB">TB</option>
+                                    </select>
+                                </div>
+                                <button type="button" class="btn btn-secondary" aria-label="Quitar unidad de almacenamiento" @onclick="() => Current.StorageUnits.Remove(unit)">Quitar</button>
+                            </div>
+                        }
+                        @if (Current.StorageUnits.Count == 0)
+                        {
+                            <div class="field technical-preview__category">
+                                <label for="storage-status">Disponibilidad de información sobre discos</label>
+                                <select id="storage-status" @bind="Current.StorageState"><option value="unrecorded">No registrada</option><option value="pending">Pendiente de verificar</option><option value="not-applicable">No aplica</option></select>
+                            </div>
+                        }
+                        <div class="field technical-preview__wide">
+                            <label for="technical-os">Sistema operativo <span class="technical-preview__optional">si corresponde</span></label>
+                            <input id="technical-os" type="text" @bind="Current.OperatingSystem" @bind:event="oninput" disabled="@(Current.OsState == "not-applicable")" />
+                            @if (string.IsNullOrWhiteSpace(Current.OperatingSystem))
+                            {
+                                <label class="technical-preview__status-label" for="os-status">Disponibilidad del sistema operativo</label>
+                                <select id="os-status" @bind="Current.OsState" @bind:after="OnOsStatusChanged"><option value="unrecorded">No registrado</option><option value="pending">Pendiente de verificar</option><option value="not-applicable">No aplica</option></select>
+                            }
+                        </div>
+                    </fieldset>
+                }
+                else if (activeTab == 1 && selectedCategory != "other")
+                {
+                    <details class="technical-preview__future"><summary>Atributos por categoría <span>Vista previa, sin guardado</span></summary>
+                    <fieldset class="technical-preview__section" disabled>
+                        <legend>Características de la categoría</legend>
+                        <p class="technical-preview__note">Vista previa: estos atributos todavía no se guardan. Su catálogo y validaciones deben aprobarse.</p>
+                        <div class="technical-preview__grid">
+                            @if (selectedCategory == "monitor")
+                            {
+                                <div class="field"><label for="monitor-size">Diagonal <span class="technical-preview__optional">pulgadas</span></label><input id="monitor-size" type="number" min="0.01" step="any" @bind="Current.Measurement" /></div>
+                                <div class="field"><label for="monitor-width">Resolución horizontal <span class="technical-preview__optional">píxeles</span></label><input id="monitor-width" type="number" min="1" step="1" @bind="Current.ResolutionWidth" /></div>
+                                <div class="field"><label for="monitor-height">Resolución vertical <span class="technical-preview__optional">píxeles</span></label><input id="monitor-height" type="number" min="1" step="1" @bind="Current.ResolutionHeight" /></div>
+                            }
+                            else if (selectedCategory == "camera")
+                            {
+                                <div class="field"><label for="camera-sensor">Sensor</label><input id="camera-sensor" type="text" @bind="Current.Detail" /></div>
+                                <div class="field"><label for="camera-mount">Montura</label><input id="camera-mount" type="text" @bind="Current.SecondaryDetail" /></div>
+                            }
+                            else if (selectedCategory == "external-disk")
+                            {
+                                <div class="field"><label for="external-type">Tipo de almacenamiento</label><select id="external-type" @bind="Current.Detail"><option value="">Seleccione tipo</option><option>SSD</option><option>HDD</option><option>NVMe</option></select></div>
+                                <div class="field"><label for="external-capacity">Capacidad</label><input id="external-capacity" type="number" min="0.01" step="any" @bind="Current.Measurement" /></div>
+                                <div class="field"><label for="external-unit">Unidad</label><select id="external-unit" @bind="Current.Unit"><option>GB</option><option>TB</option></select></div>
+                            }
+                            else if (selectedCategory == "peripheral")
+                            {
+                                <div class="field"><label for="peripheral-type">Tipo de periférico</label><select id="peripheral-type" @bind="Current.Detail"><option value="">Seleccione tipo</option><option>Teclado</option><option>Mouse</option><option>Otro</option></select></div>
+                                <div class="field"><label for="peripheral-connection">Conexión</label><input id="peripheral-connection" type="text" @bind="Current.SecondaryDetail" /></div>
+                            }
+                            else if (selectedCategory == "recording")
+                            {
+                                <div class="field"><label for="recording-type">Tipo de equipo</label><input id="recording-type" type="text" @bind="Current.Detail" /></div>
+                                <div class="field"><label for="recording-inputs">Entradas de audio <span class="technical-preview__optional">cantidad</span></label><input id="recording-inputs" type="number" min="0" step="1" @bind="Current.Measurement" /></div>
+                            }
+                        </div>
+                    </fieldset>
+                    </details>
+                }
+                else if (activeTab == 1)
+                {
+                    <p class="technical-preview__note">Los atributos particulares de esta categoría aún son una vista previa y no se guardan.</p>
+                }
+
+                @if (activeTab == 2)
+                {
+                <fieldset class="technical-preview__section">
+                    <legend>Verificación y expediente</legend>
+                    <p class="technical-preview__note">Confirme una verificación solo si se realizó ahora. Las notas nuevas se añaden al expediente; el Excel aún no se importa.</p>
+                    <div class="technical-preview__grid">
+                        <div class="field">
+                            <label for="last-verified-on">Verificación técnica ahora</label>
+                            <input id="last-verified-on" type="checkbox" @bind="common.VerifyNow" aria-describedby="verify-help" />
+                            <small id="verify-help">Se guardarán fecha y hora reales en UTC; no se inventa la hora de verificaciones pasadas.</small>
+                        </div>
+                        <div class="field">
+                            <label for="last-verified-by">Persona que verifica <span class="technical-preview__optional">si marca verificación ahora</span></label>
+                            <input id="last-verified-by" type="text" maxlength="200" @bind="common.VerifiedBy" @bind:event="oninput" />
+                        </div>
+                        <div class="field">
+                            <label for="verification-status">Disponibilidad de la verificación</label>
+                            <select id="verification-status" @bind="common.VerificationState"><option value="unrecorded">No registrada</option><option value="pending">Pendiente de verificar</option><option value="not-applicable">No aplica</option></select>
+                        </div>
+                    </div>
+                    <div class="field technical-preview__wide">
+                        <label for="technical-notes">Observaciones técnicas nuevas <span class="technical-preview__optional">opcional</span></label>
+                        <textarea id="technical-notes" rows="3" @bind="Current.Notes"></textarea>
+                    </div>
+                </fieldset>
+
+                <section class="technical-preview__pending" aria-labelledby="pending-title">
+                    <div>
+                        <h3 id="pending-title">Datos pendientes de verificar</h3>
+                    </div>
+                    <div aria-live="polite">
+                    @if (PendingChecks.Count > 0)
+                    {
+                        <ul>
+                            @foreach (var item in PendingChecks)
+                            {
+                                <li>@item</li>
+                            }
+                        </ul>
+                    }
+                    else
+                    {
+                        <p class="technical-preview__empty-pending">Sin pendientes marcados. Los datos vacíos permanecen no registrados.</p>
+                    }
+                    </div>
+                </section>
+                <details class="technical-preview__future">
+                    <summary>Campos de próximas etapas <span>Responsable, compra y evidencias</span></summary>
+                    <div class="technical-preview__grid">
+                        <div class="field"><label for="asset-responsible">Responsable actual <span class="technical-preview__optional">vista previa</span></label>
+                            <input id="asset-responsible" type="text" disabled aria-describedby="asset-responsible-help" />
+                            <small id="asset-responsible-help">Se habilitará con asignaciones históricas.</small></div>
+                        <div class="field"><label for="asset-area">Área o departamento <span class="technical-preview__optional">vista previa</span></label><input id="asset-area" type="text" disabled /></div>
+                        <div class="field"><label for="purchase-date">Fecha de compra <span class="technical-preview__optional">vista previa</span></label><input id="purchase-date" type="date" disabled /></div>
+                        <div class="field"><label for="purchase-price">Precio de compra <span class="technical-preview__optional">vista previa</span></label><input id="purchase-price" type="number" disabled /></div>
+                    </div>
+                    <div class="field technical-preview__wide"><label for="original-notes">Observaciones originales del Excel <span class="technical-preview__optional">vista previa</span></label>
+                        <textarea id="original-notes" rows="3" disabled></textarea><small>Solo se incorporarán cuando se importe el Excel.</small></div>
+                    <div class="technical-preview__media"><div><h3>Fotografías e historial</h3><p>Se habilitarán cuando exista un flujo de evidencias autorizado.</p></div>
+                        <StatusBadge Tone="neutral">Fotos no habilitadas</StatusBadge></div>
+                </details>
+                }
+            </div>
+        }
+        else if (activeTab != 0 && !quick)
+        {
+            <p class="technical-preview__hint">Seleccione una categoría en Identificación para completar esta sección.</p>
+        }
+    </div>
+    <div class="technical-preview__actions">
+        @if (error is not null) { <p class="technical-preview__feedback technical-preview__feedback--error">@error</p> }
+        @if (success is not null) { <p class="technical-preview__feedback">@success</p> }
+        <div class="technical-preview__step-actions">
+            @if (!quick && activeTab > 0) { <button class="btn btn-secondary" type="button" @onclick="() => SetTab(activeTab - 1)">Anterior</button> }
+            @if (!quick && activeTab < 2) { <button class="btn btn-secondary" type="button" @onclick="NextStep">Siguiente</button> }
+        </div>
+        <div class="technical-preview__save-actions">
+            <button type="button" class="btn btn-secondary" @onclick="RequestCloseAsync">Cancelar</button>
+            <button type="button" class="btn btn-secondary" @onclick="() => SaveAsync(false)" disabled="@(saving || !canWrite)">Guardar y registrar otro</button>
+            <button type="submit" class="btn btn-primary" disabled="@(saving || !canWrite)">@(saving ? "Guardando…" : "Guardar y cerrar")</button>
+        </div>
+    </div>
+    </form>
+</dialog>
+</section>
+
+@code {
+    private static readonly string[] tabLabels = ["Identificación", "Características técnicas", "Control y observaciones"];
+    private static readonly string[] detailLabels = ["Información general", "Características técnicas", "Condición y ubicación", "Historial técnico", "Evidencias"];
+    private ElementReference formDialog;
+    private bool canWrite;
+    private bool interactiveReady;
+    private IJSObjectReference? uiModule;
+    private DotNetObjectReference<TechnicalFormPreview>? dotNetRef;
+    private bool openRequested;
+    private bool focusErrorRequested;
+    private bool focusCodeRequested;
+    private int? focusTabRequested;
+    private bool quick;
+    private bool dirty;
+    private int activeTab;
+    private int detailTab;
+    private string search = "";
+    private string categoryFilter = "";
+    private string conditionFilter = "";
+    private int currentPage;
+    private int total;
+    private IReadOnlyList<ConditionOption> conditionOptions = [];
+    private CancellationTokenSource? searchDelay;
+    private IReadOnlyList<EquipmentRow> rows = [];
+    private EquipmentDetails? details;
+    private Guid? editingId;
+    private bool loading = true;
+    private bool saving;
+    private string? error;
+    private string? success;
+
+    protected override async Task OnInitializedAsync()
+    {
+        canWrite = await Inventory.CanWriteAsync();
+        await RefreshAsync();
+        try { conditionOptions = await Inventory.GetConditionOptionsAsync(); }
+        catch { /* The list still works with its general filters if options are temporarily unavailable. */ }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            interactiveReady = true;
+            await InvokeAsync(StateHasChanged);
+        }
+        if (openRequested)
+        {
+            uiModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Inventory/TechnicalFormPreview.razor.js");
+            dotNetRef ??= DotNetObjectReference.Create(this);
+            await uiModule.InvokeVoidAsync("openForm", formDialog, dotNetRef);
+            openRequested = false;
+        }
+        if (focusErrorRequested && uiModule is not null)
+        {
+            focusErrorRequested = false;
+            await uiModule.InvokeVoidAsync("focusError", formDialog);
+        }
+        if (focusCodeRequested && uiModule is not null)
+        {
+            focusCodeRequested = false;
+            await uiModule.InvokeVoidAsync("focusCode", formDialog);
+        }
+        if (focusTabRequested is { } tab && uiModule is not null)
+        {
+            focusTabRequested = null;
+            await uiModule.InvokeVoidAsync("focusTab", tab);
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        loading = true;
+        try
+        {
+            var result = await Inventory.ListAsync(search, categoryFilter, conditionFilter, currentPage);
+            rows = result.Rows;
+            total = result.Total;
+            error = null;
+        }
+        catch { error = "No se pudo consultar el inventario. Compruebe la conexión de la rama de pruebas."; }
+        finally { loading = false; }
+    }
+
+    private async Task DebouncedRefreshAsync()
+    {
+        searchDelay?.Cancel();
+        searchDelay?.Dispose();
+        var delay = searchDelay = new CancellationTokenSource();
+        try { await Task.Delay(250, delay.Token); currentPage = 0; await RefreshAsync(); }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task ApplyFiltersAsync()
+    {
+        currentPage = 0;
+        await RefreshAsync();
+    }
+
+    private async Task LoadPageAsync(int nextPage)
+    {
+        currentPage = nextPage;
+        await RefreshAsync();
+    }
+
+    private async Task ClearFiltersAsync()
+    {
+        search = categoryFilter = conditionFilter = "";
+        currentPage = 0;
+        await RefreshAsync();
+    }
+
+    private async Task OpenNewAsync(bool fast)
+    {
+        New();
+        quick = fast;
+        activeTab = 0;
+        openRequested = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OpenEditAsync()
+    {
+        if (details is null) return;
+        quick = false;
+        activeTab = 0;
+        dirty = false;
+        error = success = null;
+        openRequested = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void MarkDirty() => dirty = true;
+
+    private void SetTab(int index)
+    {
+        activeTab = Math.Clamp(index, 0, 2);
+        focusTabRequested = activeTab;
+        error = null;
+    }
+
+    private void NextStep()
+    {
+        if (activeTab == 0 && (string.IsNullOrWhiteSpace(assetCode) || string.IsNullOrWhiteSpace(assetName) || string.IsNullOrWhiteSpace(selectedCategory)))
+        {
+            error = "Complete código, categoría y nombre antes de continuar.";
+            focusErrorRequested = true;
+            return;
+        }
+        SetTab(activeTab + 1);
+    }
+
+    private async Task HandleTabKeyDown(KeyboardEventArgs e)
+    {
+        var index = e.Key switch
+        {
+            "ArrowRight" => (activeTab + 1) % 3,
+            "ArrowLeft" => (activeTab + 2) % 3,
+            "Home" => 0,
+            "End" => 2,
+            _ => -1
+        };
+        if (index < 0) return;
+        SetTab(index);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public Task OnDialogCancelAsync() => RequestCloseAsync();
+
+    private async Task RequestCloseAsync()
+    {
+        if (dirty && uiModule is not null && !await uiModule.InvokeAsync<bool>("confirmDiscard")) return;
+        await CloseDialogAsync();
+    }
+
+    private async Task CloseDialogAsync()
+    {
+        if (uiModule is not null) await uiModule.InvokeVoidAsync("closeForm", formDialog);
+        dirty = false;
+        error = null;
+    }
+
+    private void BackToList()
+    {
+        details = null;
+        editingId = null;
+        detailTab = 0;
+    }
+
+    private static string FormatCapacity(decimal? value, string? unit = "GB") => value is null
+        ? "No registrada" : $"{value.Value.ToString("0.###", CultureInfo.GetCultureInfo("es-BO"))} {unit ?? "GB"}";
+
+    public async ValueTask DisposeAsync()
+    {
+        searchDelay?.Cancel();
+        searchDelay?.Dispose();
+        dotNetRef?.Dispose();
+        if (uiModule is not null)
+        {
+            try { await uiModule.InvokeVoidAsync("closeForm", formDialog); } catch (JSDisconnectedException) { }
+            try { await uiModule.DisposeAsync(); } catch (JSDisconnectedException) { }
+        }
+    }
+
+    private void New()
+    {
+        editingId = null;
+        details = null;
+        selectedCategory = "";
+        assetCode = assetName = null;
+        common = new CommonDraft();
+        drafts.Clear();
+        dirty = false;
+        activeTab = detailTab = 0;
+        error = success = null;
+    }
+
+    private async Task OpenAsync(Guid id)
+    {
+        error = success = null;
+        try
+        {
+            details = await Inventory.GetAsync(id);
+            if (details is null) { error = "No se encontró el expediente."; return; }
+            editingId = id;
+            detailTab = 0;
+            var input = details.Input;
+            selectedCategory = input.Category;
+            assetCode = input.Code;
+            assetName = input.Name;
+            drafts.Clear();
+            common = new CommonDraft
+            {
+                Brand = input.Brand, Model = input.Model, Serial = input.Serial,
+                SerialState = input.SerialStatus, Location = input.Location, City = input.Site,
+                PhysicalCondition = input.PhysicalCondition ?? "",
+                OperationalCondition = input.OperationalCondition ?? "",
+                VerifiedBy = input.Verifier,
+                LocationState = Status(input, "location"),
+                PhysicalState = Status(input, "physical_condition"),
+                OperationalState = Status(input, "operational_condition"),
+                VerificationState = Status(input, "verification")
+            };
+            var technical = Current;
+            technical.ProcessorManufacturer = input.ProcessorManufacturer;
+            technical.ProcessorModel = input.ProcessorModel;
+            technical.ProcessorName = input.ProcessorName;
+            technical.TotalRamGb = input.TotalRamGb;
+            technical.OperatingSystem = input.OperatingSystem;
+            technical.RamState = Status(input, "ram");
+            technical.StorageState = Status(input, "storage");
+            technical.OsState = Status(input, "operating_system");
+            technical.RamModules.AddRange(input.RamModules.Select(x => new RamDraft { Capacity = x.CapacityGb }));
+            technical.StorageUnits.AddRange(input.StorageUnits.Select(x => new StorageDraft
+                { Type = x.Technology ?? "", Interface = x.Interface ?? "", Capacity = x.Capacity,
+                  Unit = x.Unit ?? "GB" }));
+        }
+        catch { error = "No se pudo abrir el expediente. Inténtelo nuevamente."; }
+    }
+
+    private static string Status(EquipmentInput input, string field) =>
+        input.PendingFields.Contains(field) ? "pending" :
+        input.NotApplicableFields.Contains(field) ? "not-applicable" : "unrecorded";
+
+    private void OnSerialStatusChanged() { if (common.SerialState == "not-applicable") common.Serial = null; }
+    private void OnLocationStatusChanged()
+    {
+        if (common.LocationState == "not-applicable") { common.Location = null; common.City = null; }
+    }
+    private void OnPhysicalStatusChanged()
+    {
+        if (common.PhysicalState == "not-applicable") common.PhysicalCondition = "";
+    }
+    private void OnOperationalStatusChanged()
+    {
+        if (common.OperationalState == "not-applicable") common.OperationalCondition = "";
+    }
+    private void OnRamStatusChanged()
+    {
+        if (Current.RamState == "not-applicable") Current.TotalRamGb = null;
+    }
+    private void OnOsStatusChanged()
+    {
+        if (Current.OsState == "not-applicable") Current.OperatingSystem = null;
+    }
+
+    private async Task SaveAsync(bool closeAfter)
+    {
+        if (saving) return;
+        saving = true;
+        error = success = null;
+        try
+        {
+            var technical = selectedCategory is "desktop" or "laptop" ? Current : new TechnicalDraft();
+            var pending = new List<string>();
+            var notApplicable = new List<string>();
+            if (string.IsNullOrWhiteSpace(common.Location) && common.LocationState == "pending") pending.Add("location");
+            if (string.IsNullOrWhiteSpace(common.Location) && common.LocationState == "not-applicable") notApplicable.Add("location");
+            if (string.IsNullOrWhiteSpace(common.PhysicalCondition) && common.PhysicalState == "pending") pending.Add("physical_condition");
+            if (string.IsNullOrWhiteSpace(common.PhysicalCondition) && common.PhysicalState == "not-applicable") notApplicable.Add("physical_condition");
+            if (string.IsNullOrWhiteSpace(common.OperationalCondition) && common.OperationalState == "pending") pending.Add("operational_condition");
+            if (string.IsNullOrWhiteSpace(common.OperationalCondition) && common.OperationalState == "not-applicable") notApplicable.Add("operational_condition");
+            if (!common.VerifyNow && common.VerificationState == "pending") pending.Add("verification");
+            if (!common.VerifyNow && common.VerificationState == "not-applicable") notApplicable.Add("verification");
+            if (technical.TotalRamGb is null && technical.RamState == "pending") pending.Add("ram");
+            if (technical.TotalRamGb is null && technical.RamModules.Count == 0 && technical.RamState == "not-applicable") notApplicable.Add("ram");
+            if (technical.StorageUnits.Count == 0 && technical.StorageState == "pending") pending.Add("storage");
+            if (technical.StorageUnits.Count == 0 && technical.StorageState == "not-applicable") notApplicable.Add("storage");
+            if (string.IsNullOrWhiteSpace(technical.OperatingSystem) && technical.OsState == "pending") pending.Add("operating_system");
+            if (string.IsNullOrWhiteSpace(technical.OperatingSystem) && technical.OsState == "not-applicable") notApplicable.Add("operating_system");
+            var input = new EquipmentInput
+            {
+                Code = assetCode ?? "", Name = assetName ?? "", Category = selectedCategory,
+                Brand = common.Brand, Model = common.Model, Serial = common.Serial,
+                SerialStatus = common.SerialState, Site = common.City, Location = common.Location,
+                PhysicalCondition = common.PhysicalCondition, OperationalCondition = common.OperationalCondition,
+                Inspector = common.Inspector, VerifyNow = common.VerifyNow, Verifier = common.VerifiedBy,
+                ProcessorManufacturer = technical.ProcessorManufacturer, ProcessorModel = technical.ProcessorModel,
+                ProcessorName = technical.ProcessorName, TotalRamGb = technical.TotalRamGb,
+                OperatingSystem = technical.OperatingSystem,
+                RamModules = technical.RamModules.Select(x => new RamInput { CapacityGb = x.Capacity }).ToList(),
+                StorageUnits = technical.StorageUnits.Select(x => new StorageInput
+                    { Technology = x.Type, Interface = x.Interface, Capacity = x.Capacity, Unit = x.Unit }).ToList(),
+                Observation = selectedCategory == "" ? null : Current.Notes,
+                PendingFields = pending, NotApplicableFields = notApplicable
+            };
+            var wasEditing = editingId is not null;
+            await Inventory.SaveAsync(input, editingId);
+            try { conditionOptions = await Inventory.GetConditionOptionsAsync(); }
+            catch { /* The saved equipment remains committed; the next visit refreshes filter options. */ }
+            search = input.Code.Trim();
+            categoryFilter = conditionFilter = "";
+            currentPage = 0;
+            await RefreshAsync();
+            if (closeAfter)
+            {
+                await CloseDialogAsync();
+                BackToList();
+                success = wasEditing ? "Cambios guardados; las revisiones anteriores se conservan." : "Equipo registrado y disponible en el listado.";
+            }
+            else
+            {
+                var wasQuick = quick;
+                New();
+                quick = wasQuick;
+                success = "Equipo guardado. Puede registrar otro.";
+                focusCodeRequested = true;
+            }
+        }
+        catch (InventoryValidationException ex)
+        {
+            error = ex.Message;
+            if (error.Contains("código", StringComparison.OrdinalIgnoreCase) ||
+                error.Contains("categoría", StringComparison.OrdinalIgnoreCase) ||
+                error.Contains("nombre", StringComparison.OrdinalIgnoreCase)) activeTab = 0;
+            focusErrorRequested = true;
+        }
+        catch
+        {
+            error = "No se pudieron guardar los cambios. Revise la conexión y vuelva a intentarlo.";
+            focusErrorRequested = true;
+        }
+        finally { saving = false; }
+    }
+
+    private string selectedCategory = "";
+    private string CategoryLabel => selectedCategory switch
+    {
+        "desktop" => "computadora de escritorio",
+        "laptop" => "laptop",
+        "monitor" => "monitor",
+        "camera" => "cámara",
+        "external-disk" => "disco externo",
+        "peripheral" => "periférico",
+        "recording" => "equipo de grabación",
+        _ => "otro dispositivo"
+    };
+    private string? assetCode;
+    private string? assetName;
+    private CommonDraft common = new();
+    private readonly Dictionary<string, TechnicalDraft> drafts = new();
+    private TechnicalDraft Current => drafts.TryGetValue(selectedCategory, out var draft)
+        ? draft
+        : drafts[selectedCategory] = new TechnicalDraft();
+
+    private void AddRamModule()
+    {
+        Current.RamState = "unrecorded";
+        Current.RamModules.Add(new());
+    }
+    private void AddStorageUnit()
+    {
+        Current.StorageState = "unrecorded";
+        Current.StorageUnits.Add(new());
+    }
+
+    private List<string> PendingChecks
+    {
+        get
+        {
+            var pending = new List<string>();
+            if (string.IsNullOrWhiteSpace(common.Serial) && common.SerialState == "pending") pending.Add("Número de serie");
+            if (string.IsNullOrWhiteSpace(common.Location) && common.LocationState == "pending") pending.Add("Ubicación física");
+            if (string.IsNullOrEmpty(common.PhysicalCondition) && common.PhysicalState == "pending") pending.Add("Condición física");
+            if (string.IsNullOrEmpty(common.OperationalCondition) && common.OperationalState == "pending") pending.Add("Condición operativa");
+            if ((common.VerifyNow && string.IsNullOrWhiteSpace(common.VerifiedBy)) ||
+                (!common.VerifyNow && common.VerificationState == "pending"))
+                pending.Add("Completar fecha y persona de última verificación");
+            if (selectedCategory is "desktop" or "laptop")
+            {
+                if (Current.TotalRamGb is null && Current.RamState == "pending") pending.Add("RAM total");
+                if (Current.StorageUnits.Count == 0 && Current.StorageState == "pending") pending.Add("Unidades de almacenamiento");
+                if (string.IsNullOrWhiteSpace(Current.OperatingSystem) && Current.OsState == "pending") pending.Add("Sistema operativo");
+            }
+            return pending;
+        }
+    }
+
+    private sealed class CommonDraft
+    {
+        public string? Brand { get; set; }
+        public string? Model { get; set; }
+        public string? Serial { get; set; }
+        public string SerialState { get; set; } = "unrecorded";
+        public string? Responsible { get; set; }
+        public string ResponsibleState { get; set; } = "unrecorded";
+        public string? Location { get; set; }
+        public string LocationState { get; set; } = "unrecorded";
+        public string? Area { get; set; }
+        public string? City { get; set; }
+        public string? Inspector { get; set; }
+        public string PhysicalCondition { get; set; } = "";
+        public string PhysicalState { get; set; } = "unrecorded";
+        public string OperationalCondition { get; set; } = "";
+        public string OperationalState { get; set; } = "unrecorded";
+        public bool VerifyNow { get; set; }
+        public string? VerifiedBy { get; set; }
+        public string VerificationState { get; set; } = "unrecorded";
+        public DateTime? PurchaseOn { get; set; }
+        public decimal? PurchasePrice { get; set; }
+        public string? OriginalNotes { get; set; }
+    }
+
+    private sealed class TechnicalDraft
+    {
+        public string? ProcessorManufacturer { get; set; }
+        public string? ProcessorModel { get; set; }
+        public string? ProcessorName { get; set; }
+        public decimal? TotalRamGb { get; set; }
+        public string RamState { get; set; } = "unrecorded";
+        public string? OperatingSystem { get; set; }
+        public string OsState { get; set; } = "unrecorded";
+        public decimal? Measurement { get; set; }
+        public int? ResolutionWidth { get; set; }
+        public int? ResolutionHeight { get; set; }
+        public string? Detail { get; set; }
+        public string? SecondaryDetail { get; set; }
+        public string Unit { get; set; } = "GB";
+        public string? Notes { get; set; }
+        public List<RamDraft> RamModules { get; } = [];
+        public List<StorageDraft> StorageUnits { get; } = [];
+        public string StorageState { get; set; } = "unrecorded";
+    }
+
+    private sealed class RamDraft
+    {
+        public Guid Id { get; } = Guid.NewGuid();
+        public decimal? Capacity { get; set; }
+    }
+
+    private sealed class StorageDraft
+    {
+        public Guid Id { get; } = Guid.NewGuid();
+        public string Type { get; set; } = "";
+        public string Interface { get; set; } = "";
+        public decimal? Capacity { get; set; }
+        public string Unit { get; set; } = "GB";
+    }
+}

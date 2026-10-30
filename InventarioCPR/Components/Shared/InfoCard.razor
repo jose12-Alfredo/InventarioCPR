@@ -1,0 +1,21 @@
+<article class="info-card info-card--@Tone">
+    <div class="info-card__icon"><AppIcon Name="@Icon" /></div>
+    <div>
+        <h3>@Title</h3>
+        <div class="info-card__content">@ChildContent</div>
+    </div>
+</article>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Icon { get; set; } = string.Empty;
+
+    [Parameter]
+    public string Tone { get; set; } = "default";
+
+    [Parameter, EditorRequired]
+    public RenderFragment? ChildContent { get; set; }
+}

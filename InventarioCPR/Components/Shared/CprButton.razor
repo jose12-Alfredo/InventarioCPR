@@ -1,0 +1,21 @@
+<a class="btn btn-@Variant" href="@Href">
+    @ChildContent
+    @if (!string.IsNullOrWhiteSpace(Icon))
+    {
+        <AppIcon Name="@Icon" />
+    }
+</a>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Href { get; set; } = string.Empty;
+
+    [Parameter]
+    public string Variant { get; set; } = "primary";
+
+    [Parameter]
+    public string? Icon { get; set; }
+
+    [Parameter, EditorRequired]
+    public RenderFragment? ChildContent { get; set; }
+}

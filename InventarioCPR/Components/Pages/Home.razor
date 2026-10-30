@@ -1,0 +1,60 @@
+﻿@page "/"
+
+<PageTitle>Inicio | InventarioCPR</PageTitle>
+
+<div class="page-heading">
+    <div>
+        <h1>Control claro para cada activo.</h1>
+        <p>La base visual para organizar expedientes, custodias, condiciones y movimientos sin perder su historia.</p>
+    </div>
+    <StatusBadge Tone="progress">Fase de interfaz</StatusBadge>
+</div>
+
+<section class="home-intro" aria-labelledby="home-intro-title">
+    <div class="home-intro__copy">
+        <h2 id="home-intro-title">El inventario comienza con un expediente confiable</h2>
+        <p>Cada equipo tendra una identidad permanente. Las asignaciones, evidencias y mantenimientos se incorporaran como eventos historicos, nunca como reemplazos silenciosos.</p>
+        <div class="button-row">
+            <CprButton Href="inventario" Icon="arrow">Abrir inventario</CprButton>
+            <span class="implementation-note">Estructura visual disponible. Persistencia pendiente.</span>
+        </div>
+    </div>
+
+    <div class="trace-board" aria-label="Estructura del expediente digital">
+        <div class="registration-mark registration-mark--top" aria-hidden="true"></div>
+        <div class="trace-board__head">
+            <span>Expediente digital</span>
+            <strong>Identidad estable</strong>
+        </div>
+        <ol class="trace-line">
+            <li><span>01</span><strong>Equipo</strong><small>Codigo unico</small></li>
+            <li><span>02</span><strong>Custodia</strong><small>Responsable vigente</small></li>
+            <li><span>03</span><strong>Condicion</strong><small>Fisica y operativa</small></li>
+            <li><span>04</span><strong>Historial</strong><small>Eventos conservados</small></li>
+        </ol>
+        <div class="registration-mark registration-mark--bottom" aria-hidden="true"></div>
+    </div>
+</section>
+
+<section class="implementation-grid" aria-labelledby="implementation-title">
+    <div class="section-heading">
+        <div>
+            <h2 id="implementation-title">Alcance de esta fase</h2>
+            <p>La interfaz distingue con claridad lo disponible de lo que aun requiere implementacion.</p>
+        </div>
+    </div>
+
+    <InfoCard Title="Disponible ahora" Icon="check" Tone="positive">
+        <ul class="check-list">
+            <li>Layout adaptable y navegacion accesible</li>
+            <li>Pagina de inicio y estructura de inventario</li>
+            <li>Sistema visual reutilizable</li>
+        </ul>
+    </InfoCard>
+    <InfoCard Title="Siguiente etapa" Icon="layers">
+        <p>Modelo de datos, persistencia y operaciones del inventario se conectaran despues de aprobar las decisiones pendientes.</p>
+    </InfoCard>
+    <InfoCard Title="Principio permanente" Icon="history" Tone="accent">
+        <p>Los historiales y las evidencias deben conservarse. La interfaz futura reflejara esa trazabilidad en cada expediente.</p>
+    </InfoCard>
+</section>

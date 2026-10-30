@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json.schemastore.org/launchsettings.json",
+    "profiles": {
+      "http": {
+        "commandName": "Project",
+        "dotnetRunMessages": true,
+        "launchBrowser": true,
+        "applicationUrl": "https://localhost:7228",
+        "environmentVariables": {
+          "ASPNETCORE_ENVIRONMENT": "Development",
+          "Security__EnableIdentity": "true",
+          "Inventory__ListenUrl": "https://localhost:7228"
+        }
+      },
+      "https": {
+        "commandName": "Project",
+        "dotnetRunMessages": true,
+        "launchBrowser": true,
+        "applicationUrl": "https://localhost:7228",
+        "environmentVariables": {
+          "ASPNETCORE_ENVIRONMENT": "Development",
+          "Security__EnableIdentity": "true",
+          "Inventory__ListenUrl": "https://localhost:7228"
+        }
+      },
+      "https-identity-local": {
+        "commandName": "Project",
+        "dotnetRunMessages": true,
+        "launchBrowser": true,
+        "applicationUrl": "https://localhost:7228",
+        "environmentVariables": {
+          "ASPNETCORE_ENVIRONMENT": "Development",
+          "Security__EnableIdentity": "true",
+          "Inventory__ListenUrl": "https://localhost:7228"
+        }
+      },
+      "https-identity-lan": {
+        "commandName": "Project",
+        "dotnetRunMessages": true,
+        "launchBrowser": false,
+        "applicationUrl": "https://192.168.3.70:7443",
+        "environmentVariables": {
+          "ASPNETCORE_ENVIRONMENT": "Development",
+          "Security__EnableIdentity": "true",
+          "Inventory__ListenUrl": "https://192.168.3.70:7443",
+          "Inventory__AllowedOfficeNetwork": "192.168.3.0/24"
+        }
+      },
+      "anonymous-tests-local": {
+        "commandName": "Project",
+        "dotnetRunMessages": true,
+        "launchBrowser": false,
+        "applicationUrl": "http://127.0.0.1:5275",
+        "environmentVariables": {
+          "ASPNETCORE_ENVIRONMENT": "Development",
+          "Security__EnableIdentity": "false",
+          "Inventory__AllowAnonymousLocalTests": "true",
+          "Inventory__ListenUrl": "http://127.0.0.1:5275"
+        }
+      }
+    }
+  }

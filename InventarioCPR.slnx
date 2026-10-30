@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="InventarioCPR.Tests/InventarioCPR.Tests.csproj" />
+  <Project Path="InventarioCPR/InventarioCPR.csproj" />
+</Solution>

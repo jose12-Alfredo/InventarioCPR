@@ -1,0 +1,103 @@
+.primary-nav {
+    display: grid;
+    gap: 0.3rem;
+    padding: 1.5rem 1rem;
+}
+
+.nav-section-label {
+    padding: 0 0.65rem 0.4rem;
+    color: #baa8d1;
+    font-size: 0.66rem;
+    font-weight: 720;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.nav-divider {
+    height: 1px;
+    margin: 1rem 0 1.25rem;
+    background: rgba(255,255,255,.13);
+}
+
+.nav-link,
+::deep .nav-link {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 2.75rem;
+    padding: 0.65rem;
+    border-radius: var(--radius-sm);
+    color: #e2d8ee;
+    font-size: 0.88rem;
+    font-weight: 610;
+    text-decoration: none;
+    transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.nav-link:hover:not(.nav-link--disabled),
+::deep .nav-link:hover {
+    background: rgba(255,255,255,.09);
+    color: #fff;
+}
+
+::deep .nav-link.active {
+    background: #fff;
+    color: var(--cpr-violet-dark);
+    box-shadow: 0 8px 20px rgba(22, 3, 45, 0.12);
+}
+
+::deep .nav-link.active::after {
+    content: "";
+    position: absolute;
+    right: -0.2rem;
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 50%;
+    background: var(--cpr-orange);
+}
+
+.nav-link--disabled {
+    color: #a996c1;
+    cursor: not-allowed;
+}
+
+.nav-link small {
+    display: none;
+}
+
+@media (max-width: 48rem) {
+    .primary-nav {
+        padding: 0;
+    }
+
+    .nav-section-label {
+        color: var(--cpr-muted);
+    }
+
+    .nav-divider {
+        background: var(--cpr-border);
+    }
+
+    .nav-link,
+    ::deep .nav-link {
+        color: var(--cpr-text);
+    }
+
+    .nav-link:hover:not(.nav-link--disabled),
+    ::deep .nav-link:hover {
+        background: var(--cpr-bg);
+        color: var(--cpr-violet-dark);
+    }
+
+    ::deep .nav-link.active {
+        background: var(--cpr-violet-soft);
+        color: var(--cpr-violet-dark);
+        box-shadow: none;
+    }
+
+    .nav-link--disabled {
+        color: #878c96;
+    }
+}
