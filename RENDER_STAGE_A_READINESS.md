@@ -70,6 +70,14 @@ No copiar el archivo User Secrets ni configurar `NeonDevelopmentApp:BranchConfir
 - Data Protection guarda claves con nombre de aplicación estable `InventarioCPR` y ruta configurable. **La existencia de la carpeta no demuestra que exista un disco persistente.** Revisar montaje, permisos y supervivencia de sesión después de un reinicio autorizado. Mantener una instancia hasta diseñar escalado de circuitos/claves.
 - No se ejecutan Migrate/EnsureCreated ni limpieza automáticamente al arrancar. Solo se comprueba si faltan migraciones Identity; las fotos también se bloquean cuando su migración está pendiente.
 
+## Incidente de interactividad: arranque de Blazor
+
+La publicación inicial entregó HTML y módulos propios correctamente, pero `/_framework/blazor.web.js` respondió 404. En una sesión autenticada se confirmó que `window.Blazor` era undefined y los controles seguían en su estado prerenderizado, sin eventos interactivos.
+
+La restauración de la primera capa Docker solo tenía el csproj, sin archivos Razor. .NET 10 decide implícitamente si requiere Microsoft.AspNetCore.App.Internal.Assets a partir de esos archivos; por eso ese paquete no se restauraba y el publish --no-restore omitía el runtime del navegador. La prueba ProjectOnlyDockerRestoreIncludesBlazorFrameworkAssets reprodujo el fallo antes de corregirlo.
+
+El proyecto declara ahora RequiresAspNetWebAssets=true y el Dockerfile exige un blazor.web.js no vacío en la publicación. No se modifican Identity, permisos, datos ni migraciones. El cierre de cualquier despliegue debe verificar el runtime Blazor (no solo módulos propios y healthz), la conexión interactiva autenticada y los clics de expediente/formulario.
+
 ## Archivos y límites
 
 La subida usa XMLHttpRequest binaria → request body → lectura incremental acotada en MemoryStream → validación/recodificación → Cloudinary. Las fotos no se escriben a disco del contenedor; PostgreSQL conserva referencias, metadatos, reservas y principal. El disco de Data Protection es una necesidad distinta de almacenar fotografías.

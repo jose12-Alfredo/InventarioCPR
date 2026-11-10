@@ -6,6 +6,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
     <UserSecretsId>InventarioCPR-local</UserSecretsId>
+    <!-- Docker restores the project before copying .razor files. Keep the Blazor boot assets in that restore. -->
+    <RequiresAspNetWebAssets>true</RequiresAspNetWebAssets>
   </PropertyGroup>
 
   <ItemGroup>

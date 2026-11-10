@@ -13,6 +13,9 @@ RUN dotnet publish "InventarioCPR/InventarioCPR.csproj" \
     /p:DebugType=None \
     /p:DebugSymbols=false
 
+# A server-rendered page is unusable without the Blazor browser runtime.
+RUN test -s /app/publish/wwwroot/_framework/blazor.web.js
+
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 
