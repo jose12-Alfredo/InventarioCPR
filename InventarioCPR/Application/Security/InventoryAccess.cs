@@ -50,22 +50,31 @@ public sealed class IdentityInventoryAccess(
     UserManager<AccessUser> users,
     SignInManager<AccessUser> signIn) : IInventoryAccess
 {
+    // Interactive Server events can overlap while awaiting I/O. UserManager and SignInManager
+    // share the circuit-scoped AccessDbContext, which cannot run simultaneous EF operations.
+    private readonly SemaphoreSlim identityQueries = new(1, 1);
+
     private async Task<bool> AllowedAsync(string policy)
     {
-        var principal = (await authenticationState.GetAuthenticationStateAsync()).User;
-        if (principal.Identity?.IsAuthenticated != true ||
-            !(await authorization.AuthorizeAsync(principal, policy)).Succeeded)
-            return false;
-        var account = await signIn.ValidateSecurityStampAsync(principal);
-        if (account?.IsActive != true) return false;
-        var currentRoles = await users.GetRolesAsync(account);
-        return policy switch
+        await identityQueries.WaitAsync();
+        try
         {
-            InventoryPolicies.Read => currentRoles.Any(x => x is InventoryPolicies.Administrator or InventoryPolicies.Operator or InventoryPolicies.Viewer),
-            InventoryPolicies.Write => currentRoles.Any(x => x is InventoryPolicies.Administrator or InventoryPolicies.Operator),
-            InventoryPolicies.ManageUsers => currentRoles.Contains(InventoryPolicies.Administrator),
-            _ => false
-        };
+            var principal = (await authenticationState.GetAuthenticationStateAsync()).User;
+            if (principal.Identity?.IsAuthenticated != true ||
+                !(await authorization.AuthorizeAsync(principal, policy)).Succeeded)
+                return false;
+            var account = await signIn.ValidateSecurityStampAsync(principal);
+            if (account?.IsActive != true) return false;
+            var currentRoles = await users.GetRolesAsync(account);
+            return policy switch
+            {
+                InventoryPolicies.Read => currentRoles.Any(x => x is InventoryPolicies.Administrator or InventoryPolicies.Operator or InventoryPolicies.Viewer),
+                InventoryPolicies.Write => currentRoles.Any(x => x is InventoryPolicies.Administrator or InventoryPolicies.Operator),
+                InventoryPolicies.ManageUsers => currentRoles.Contains(InventoryPolicies.Administrator),
+                _ => false
+            };
+        }
+        finally { identityQueries.Release(); }
     }
 
     public Task<bool> CanReadAsync() => AllowedAsync(InventoryPolicies.Read);

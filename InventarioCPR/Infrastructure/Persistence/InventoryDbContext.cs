@@ -5,6 +5,41 @@ namespace InventarioCPR.Infrastructure.Persistence;
 
 public sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> options) : DbContext(options)
 {
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        ProtectPhotoHistory();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        ProtectPhotoHistory();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private void ProtectPhotoHistory()
+    {
+        foreach (var entry in ChangeTracker.Entries<PhotoEvidence>())
+            if (entry.State is EntityState.Modified or EntityState.Deleted)
+                throw new InvalidOperationException("Las evidencias históricas no se modifican ni se eliminan.");
+        foreach (var entry in ChangeTracker.Entries<PhotoPrincipalPeriod>())
+        {
+            if (entry.State == EntityState.Deleted || (entry.State == EntityState.Modified &&
+                (entry.Property(x => x.ToUtc).OriginalValue is not null || entry.Entity.ToUtc is null ||
+                 entry.Entity.ToUtc <= entry.Entity.FromUtc || entry.Properties.Any(x => x.IsModified && x.Metadata.Name != nameof(PhotoPrincipalPeriod.ToUtc)))))
+                throw new InvalidOperationException("Solo se permite cerrar una selección principal vigente, sin alterar su historia.");
+        }
+        foreach (var entry in ChangeTracker.Entries<PhotoUpload>())
+        {
+            if (entry.State == EntityState.Deleted || (entry.State == EntityState.Modified &&
+                (entry.Property(x => x.CompletedAtUtc).OriginalValue is not null ||
+                 entry.Properties.Any(x => x.IsModified && x.Metadata.Name is not (nameof(PhotoUpload.Sha256) or nameof(PhotoUpload.Format) or nameof(PhotoUpload.Width) or nameof(PhotoUpload.Height) or nameof(PhotoUpload.ByteLength) or nameof(PhotoUpload.EvidenceId) or nameof(PhotoUpload.CompletedAtUtc))))))
+                throw new InvalidOperationException("Los metadatos originales de una reserva se conservan.");
+            if (entry.State == EntityState.Modified && entry.Property(x => x.Sha256).OriginalValue is not null &&
+                entry.Properties.Any(x => x.IsModified && x.Metadata.Name is not (nameof(PhotoUpload.EvidenceId) or nameof(PhotoUpload.CompletedAtUtc))))
+                throw new InvalidOperationException("El contenido reservado no se reemplaza.");
+        }
+    }
     public DbSet<Equipment> Equipment => Set<Equipment>();
     public DbSet<EquipmentCategory> Categories => Set<EquipmentCategory>();
     public DbSet<EquipmentBrand> Brands => Set<EquipmentBrand>();
@@ -25,6 +60,8 @@ public sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> opti
     public DbSet<EquipmentLocationObservation> LocationObservations => Set<EquipmentLocationObservation>();
     public DbSet<EquipmentDataMarker> DataMarkers => Set<EquipmentDataMarker>();
     public DbSet<PhotoEvidence> PhotoEvidence => Set<PhotoEvidence>();
+    public DbSet<PhotoUpload> PhotoUploads => Set<PhotoUpload>();
+    public DbSet<PhotoPrincipalPeriod> PhotoPrincipalPeriods => Set<PhotoPrincipalPeriod>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -239,13 +276,58 @@ public sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> opti
         });
         modelBuilder.Entity<PhotoEvidence>(e =>
         {
-            e.ToTable("photo_evidence");
+            e.ToTable("photo_evidence", t => t.HasCheckConstraint("CK_photo_evidence_metadata",
+                "\"Sha256\" IS NULL OR (\"Sha256\" ~ '^[0-9A-F]{64}$' AND \"Format\" IS NOT NULL AND \"Width\" IS NOT NULL AND \"Height\" IS NOT NULL AND \"ByteLength\" IS NOT NULL AND \"CloudinaryVersion\" IS NOT NULL AND \"Format\" IN ('jpg','png') AND " +
+                "\"Width\" > 0 AND \"Height\" > 0 AND \"Width\"::bigint * \"Height\" <= 25000000 AND " +
+                "\"ByteLength\" BETWEEN 1 AND 10485760 AND \"CloudinaryVersion\" > 0 AND \"UploadedById\" IS NOT NULL)"));
             e.HasKey(x => x.Id);
             e.Property(x => x.CloudinaryPublicId).HasMaxLength(255).IsRequired();
             e.HasIndex(x => x.CloudinaryPublicId).IsUnique();
             e.Property(x => x.EvidenceType).HasMaxLength(40).IsRequired();
+            e.HasAlternateKey(x => new { x.Id, x.EquipmentId });
+            e.Property(x => x.UploadedByName).HasMaxLength(256);
+            e.Property(x => x.Observation).HasMaxLength(2000);
+            e.Property(x => x.Source).HasMaxLength(20);
+            e.Property(x => x.Sha256).HasMaxLength(64);
+            e.Property(x => x.Format).HasMaxLength(8);
+            e.HasIndex(x => new { x.EquipmentId, x.Sha256 }).IsUnique().HasFilter("\"Sha256\" IS NOT NULL");
+            e.HasIndex(x => new { x.EquipmentId, x.UploadedAtUtc, x.Id });
             e.HasOne(x => x.Equipment).WithMany().HasForeignKey(x => x.EquipmentId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.Inspection).WithMany().HasForeignKey(x => new { x.InspectionId, x.EquipmentId })
+                .HasPrincipalKey(x => new { x.Id, x.EquipmentId }).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<PhotoUpload>(e =>
+        {
+            e.ToTable("photo_uploads", t =>
+            {
+                t.HasCheckConstraint("CK_photo_upload_position", "\"Position\" BETWEEN 0 AND 9");
+                t.HasCheckConstraint("CK_photo_upload_type", "\"EvidenceType\" IN ('General','Serial','Accesorio')");
+                t.HasCheckConstraint("CK_photo_upload_source", "\"Source\" IN ('Archivo','Camara')");
+                t.HasCheckConstraint("CK_photo_upload_completed", "(\"CompletedAtUtc\" IS NULL) = (\"EvidenceId\" IS NULL)");
+                t.HasCheckConstraint("CK_photo_upload_metadata", "\"Sha256\" IS NULL OR (\"Sha256\" ~ '^[0-9A-F]{64}$' AND \"Format\" IS NOT NULL AND \"Width\" IS NOT NULL AND \"Height\" IS NOT NULL AND \"ByteLength\" IS NOT NULL AND \"Format\" IN ('jpg','png') AND \"Width\" > 0 AND \"Height\" > 0 AND \"Width\"::bigint * \"Height\" <= 25000000 AND \"ByteLength\" BETWEEN 1 AND 10485760)");
+            });
+            e.HasKey(x => x.Id);
+            e.Ignore(x => x.PublicId);
+            e.Property(x => x.ActorName).HasMaxLength(256).IsRequired();
+            e.Property(x => x.FileName).HasMaxLength(200).IsRequired();
+            e.Property(x => x.EvidenceType).HasMaxLength(40).IsRequired();
+            e.Property(x => x.Note).HasMaxLength(2000).IsRequired();
+            e.Property(x => x.Source).HasMaxLength(20).IsRequired();
+            e.Property(x => x.Sha256).HasMaxLength(64);
+            e.Property(x => x.Format).HasMaxLength(8);
+            e.HasIndex(x => new { x.EquipmentId, x.ActorId, x.BatchId, x.Position }).IsUnique();
+            e.HasOne<Equipment>().WithMany().HasForeignKey(x => x.EquipmentId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<PhotoEvidence>().WithMany().HasForeignKey(x => new { x.EvidenceId, x.EquipmentId })
+                .HasPrincipalKey(x => new { x.Id, x.EquipmentId }).OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<PhotoPrincipalPeriod>(e =>
+        {
+            e.ToTable("photo_principal_periods", t => t.HasCheckConstraint("CK_photo_principal_period", "\"ToUtc\" IS NULL OR \"ToUtc\" > \"FromUtc\""));
+            e.HasKey(x => x.Id);
+            e.Property(x => x.ActorName).HasMaxLength(256).IsRequired();
+            e.HasIndex(x => x.EquipmentId).IsUnique().HasFilter("\"ToUtc\" IS NULL");
+            e.HasOne<Equipment>().WithMany().HasForeignKey(x => x.EquipmentId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<PhotoEvidence>().WithMany().HasForeignKey(x => new { x.PhotoId, x.EquipmentId })
                 .HasPrincipalKey(x => new { x.Id, x.EquipmentId }).OnDelete(DeleteBehavior.Restrict);
         });
     }

@@ -10,6 +10,7 @@ Este documento describe la preparación del repositorio privado y el despliegue 
 - La aplicación no ejecuta `EnsureCreated`, `Migrate` ni migraciones automáticamente.
 - Las migraciones EF se conservan en el repositorio porque son necesarias para preparar una base autorizada.
 - El despliegue real sigue bloqueado hasta aprobar y ejecutar un procedimiento separado para el esquema, roles y administrador de Production.
+- Existe un servicio público en `https://inventariocpr.onrender.com`; la revisión actual de su rama Git, destino Neon y disco está en `RENDER_STAGE_A_READINESS.md`. No deducir el destino a partir del nombre del entorno ASP.NET Core ni de la rama local.
 
 ## Archivos que deben versionarse
 
@@ -74,10 +75,12 @@ Configurar como secretos o variables del servicio:
 | `ConnectionStrings__Database` | Conexión Npgsql de la base Production autorizada, con usuario y contraseña | Sí |
 | `Security__EnableIdentity=true` | Mantiene Identity obligatoria | No |
 | `Inventory__ProductionWritesEnabled=true` | Habilita altas/ediciones solo después de aprobar esquema y operación | No |
+| `Inventory__PhotosEnabled=true` | Habilita fotografías solo con EquipmentPhotoHistory aplicada en el destino aprobado | No |
 | `DataProtection__KeysPath=/var/data/keys` | Ruta predeterminada de la imagen; puede sobrescribirse si cambia el montaje | No |
 | `Cloudinary__CloudName` | Nombre de cuenta Cloudinary | Según política |
 | `Cloudinary__ApiKey` | Clave API Cloudinary | Sí |
 | `Cloudinary__ApiSecret` | Secreto API Cloudinary | Sí |
+| `Cloudinary__TestAssetFolder` | Carpeta exclusiva para la prueba física con imágenes ficticias; no mezclarla con fotografías empresariales | No |
 
 No es necesario configurar `PORT`: Render usa `10000` de forma predeterminada y puede proporcionar otro valor. Tampoco configurar un certificado Kestrel ni una contraseña PFX: Render termina TLS y reenvía el esquema HTTPS. La aplicación reconoce `RENDER=true`, confía los encabezados reenviados únicamente en ese modo y escucha HTTP dentro del contenedor. `RENDER_EXTERNAL_HOSTNAME` restringe automáticamente el host nativo; configurar `AllowedHosts` manualmente al añadir un dominio personalizado.
 
@@ -103,6 +106,8 @@ El contenedor no aplica migraciones al iniciar. Antes del primer despliegue func
 6. Habilitar `Inventory__ProductionWritesEnabled=true` solo cuando el esquema y la política empresarial estén aprobados.
 
 No apuntar Render a `test-migracion-inicial` como sustituto accidental de Production.
+
+Para una prueba física aislada, confirmar expresamente el destino del servicio existente y su esquema antes de publicar. El runtime debe seguir en Production por seguridad, aunque la base elegida para un piloto autorizado sea una rama de pruebas. Esta revisión no cambia la conexión de Render, no autoriza migraciones en production de Neon y no convierte la validación local en una validación del esquema remoto.
 
 ## Compilación y pruebas
 

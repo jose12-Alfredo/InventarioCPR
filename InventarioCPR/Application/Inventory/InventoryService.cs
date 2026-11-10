@@ -4,11 +4,12 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 using System.Globalization;
+using InventarioCPR.Application.Photos;
 using InventarioCPR.Application.Security;
 
 namespace InventarioCPR.Application.Inventory;
 
-public sealed record EquipmentDetails(Guid Id, EquipmentInput Input, IReadOnlyList<string> History);
+public sealed record EquipmentDetails(Guid Id, EquipmentInput Input, IReadOnlyList<string> History, string? PhotoUrl);
 
 public sealed class InventoryService(IDbContextFactory<InventoryDbContext> contexts, IConfiguration configuration,
     IInventoryAccess access)
@@ -82,13 +83,25 @@ public sealed class InventoryService(IDbContextFactory<InventoryDbContext> conte
                 .Select(i => i.OperationalCondition).FirstOrDefault() == value);
         }
         var total = await equipment.CountAsync(cancellationToken);
-        var rows = await equipment.OrderBy(x => x.CodeNormalized).Skip(Math.Max(0, page) * PageSize).Take(PageSize)
-            .Select(x => new EquipmentRow(x.Id, x.Code, x.Name, x.Category.Name,
-                x.Brand != null ? x.Brand.Name : null,
-                x.CommercialModel != null ? x.CommercialModel.Name : null,
-                x.Inspections.OrderByDescending(i => i.InspectedAtUtc).Select(i => i.PhysicalCondition).FirstOrDefault(),
-                x.Inspections.OrderByDescending(i => i.InspectedAtUtc).Select(i => i.OperationalCondition).FirstOrDefault()))
+        var photosEnabled = configuration.GetValue<bool>("Inventory:PhotosEnabled") &&
+            configuration.GetValue("Security:EnableIdentity", true) && !(await db.Database.GetPendingMigrationsAsync(cancellationToken)).Any();
+        var rowData = await equipment.OrderBy(x => x.CodeNormalized).Skip(Math.Max(0, page) * PageSize).Take(PageSize)
+            .Select(x => new
+            {
+                x.Id,
+                x.Code,
+                x.Name,
+                Category = x.Category.Name,
+                Brand = x.Brand != null ? x.Brand.Name : null,
+                Model = x.CommercialModel != null ? x.CommercialModel.Name : null,
+                PhysicalCondition = x.Inspections.OrderByDescending(i => i.InspectedAtUtc).Select(i => i.PhysicalCondition).FirstOrDefault(),
+                OperationalCondition = x.Inspections.OrderByDescending(i => i.InspectedAtUtc).Select(i => i.OperationalCondition).FirstOrDefault(),
+                PhotoId = photosEnabled ? db.PhotoPrincipalPeriods.Where(p => p.EquipmentId == x.Id && p.ToUtc == null)
+                    .Select(p => (Guid?)p.PhotoId).FirstOrDefault() : null
+            })
             .ToListAsync(cancellationToken);
+        var rows = rowData.Select(x => new EquipmentRow(x.Id, x.Code, x.Name, x.Category, x.Brand, x.Model,
+            x.PhysicalCondition, x.OperationalCondition, x.PhotoId is Guid photo ? PhotoRules.ContentUrl(x.Id, photo, true) : null)).ToList();
         return new EquipmentPage(rows, total);
     }
 
@@ -113,6 +126,11 @@ public sealed class InventoryService(IDbContextFactory<InventoryDbContext> conte
             .FirstOrDefaultAsync(cancellationToken);
         var markers = await db.DataMarkers.AsNoTracking().Where(x => x.EquipmentId == id)
             .ToListAsync(cancellationToken);
+        Guid? photoId = null;
+        if (configuration.GetValue<bool>("Inventory:PhotosEnabled") && configuration.GetValue("Security:EnableIdentity", true) &&
+            !(await db.Database.GetPendingMigrationsAsync(cancellationToken)).Any())
+            photoId = await db.PhotoPrincipalPeriods.AsNoTracking().Where(x => x.EquipmentId == id && x.ToUtc == null)
+                .Select(x => (Guid?)x.PhotoId).SingleOrDefaultAsync(cancellationToken);
         var input = new EquipmentInput
         {
             Code = equipment.Code, Name = equipment.Name,
@@ -153,7 +171,7 @@ public sealed class InventoryService(IDbContextFactory<InventoryDbContext> conte
             .Select(x => $"Nota ({x.Source}, {x.RecordedAtUtc:yyyy-MM-dd HH:mm} UTC): {x.Text}"));
         if (verification is not null)
             history.Add($"Última verificación: {verification.VerifiedAtUtc:yyyy-MM-dd HH:mm} UTC · {verification.Verifier.Name}");
-        return new EquipmentDetails(id, input, history);
+        return new EquipmentDetails(id, input, history, photoId is Guid photo ? PhotoRules.ContentUrl(id, photo) : null);
     }
 
     public async Task<Guid> SaveAsync(EquipmentInput input, Guid? id = null, CancellationToken cancellationToken = default)

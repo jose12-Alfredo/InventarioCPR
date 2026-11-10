@@ -91,6 +91,46 @@ if (args.Contains("--check-auth-test-schema", StringComparer.Ordinal))
     return;
 }
 
+if (args.Contains("--check-photo-migration", StringComparer.Ordinal))
+{
+    try
+    {
+        if (!builder.Environment.IsDevelopment() || builder.Configuration["NeonDevelopmentApp:BranchConfirmed"] != "test-migracion-inicial")
+            throw new InvalidOperationException();
+        var photoConnection = NeonConnection.DevelopmentApp(builder.Configuration);
+        var approvedHost = Environment.GetEnvironmentVariable("INVENTARIOCPR_APPROVED_PHOTO_HOST");
+        var approvedBranch = Environment.GetEnvironmentVariable("INVENTARIOCPR_APPROVED_PHOTO_BRANCH");
+        if (approvedHost is not null)
+        {
+            var actualHost = new NpgsqlConnectionStringBuilder(photoConnection).Host ?? "";
+            if (approvedBranch != "br-flat-smoke-b4kdmosq" ||
+                !string.Equals(actualHost.Replace("-pooler.", ".", StringComparison.OrdinalIgnoreCase),
+                    approvedHost.Replace("-pooler.", ".", StringComparison.OrdinalIgnoreCase), StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("El endpoint no coincide con la confirmación actual del usuario.");
+            Console.WriteLine($"Destino confirmado por el usuario: rama test-migracion-inicial; ID={approvedBranch}; endpoint={actualHost}.");
+        }
+        await using var connection = new NpgsqlConnection(photoConnection);
+        await connection.OpenAsync();
+        await using var check = new NpgsqlCommand("""
+            SELECT (SELECT count(*) FROM public.photo_evidence),
+              (SELECT count(*) FROM public."__EFMigrationsHistory" WHERE "MigrationId" LIKE '%_EquipmentPhotoHistory'),
+              (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='photo_evidence' AND column_name='Sha256'),
+              (SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname='public' AND tablename IN ('photo_uploads','photo_principal_periods'))
+            """, connection);
+        await using var reader = await check.ExecuteReaderAsync();
+        await reader.ReadAsync();
+        Console.WriteLine($"Fotografías, preflight de solo lectura: endpoint aislado coincide con ExpectedHost y difiere de NeonDirect; " +
+            $"marcador=test-migracion-inicial; evidencias existentes={reader.GetInt64(0)}; " +
+            $"migración etapa A aplicada={reader.GetInt64(1)}; columna nueva={reader.GetInt64(2)}; tablas nuevas={reader.GetInt64(3)}/2. " +
+            "No se aplicaron cambios. Host y credenciales omitidos.");
+        if (Environment.GetEnvironmentVariable("INVENTARIOCPR_PHOTO_REQUIRE_EMPTY") == "true" &&
+            (reader.GetInt64(0) != 0 || reader.GetInt64(1) != 0 || reader.GetInt64(2) != 0 || reader.GetInt64(3) != 0))
+            throw new InvalidOperationException("El estado previo de fotografías no coincide con el revisado.");
+    }
+    catch (Exception ex) { Console.WriteLine($"Preflight de fotografías no verificado ({ex.GetType().Name}). No se aplicaron cambios."); Environment.ExitCode = 1; }
+    return;
+}
+
 if (args.Contains("--check-development-app", StringComparer.Ordinal))
 {
     try
@@ -99,7 +139,11 @@ if (args.Contains("--check-development-app", StringComparer.Ordinal))
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
         await using var check = new NpgsqlCommand(
-            "SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname = 'public' AND tablename <> '__EFMigrationsHistory'", connection);
+            "SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname = 'public' AND tablename = ANY(ARRAY[" +
+            "'departments','equipment_brands','equipment_categories','sites','areas','category_attribute_definitions'," +
+            "'commercial_models','locations','staff_members','equipment','equipment_data_markers','equipment_inspections'," +
+            "'equipment_location_observations','equipment_observations','technical_configurations','technical_verifications'," +
+            "'photo_evidence','ram_modules','storage_units','technical_attribute_values'])", connection);
         var count = (long?)await check.ExecuteScalarAsync();
         await using var history = new NpgsqlCommand(
             "SELECT count(*) FROM public.\"__EFMigrationsHistory\" WHERE \"MigrationId\" LIKE '%_InitialInventorySchema'", connection);
@@ -390,6 +434,25 @@ if (identityEnabled)
         limiter.Window = TimeSpan.FromMinutes(1);
         limiter.QueueLimit = 0;
     }));
+    builder.Services.AddRateLimiter(options => options.AddPolicy("photo-writes", context =>
+        System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "anonymous",
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 40, Window = TimeSpan.FromMinutes(1), QueueLimit = 0
+            })));
+    builder.Services.AddRateLimiter(options =>
+    {
+        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+        options.AddConcurrencyLimiter("photo-downloads", limiter =>
+        {
+            limiter.PermitLimit = 4;
+            limiter.QueueLimit = 24;
+            limiter.QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.OldestFirst;
+        });
+    });
+    builder.Services.AddScoped<IPhotoAccess, PhotoAccess>();
+    builder.Services.AddScoped<EquipmentPhotoService>();
     builder.Services.AddScoped<IInventoryAccess, IdentityInventoryAccess>();
 }
 else builder.Services.AddScoped<IInventoryAccess, LocalTestInventoryAccess>(); // Only after explicit local-test opt-in.
@@ -398,6 +461,10 @@ builder.Services.AddDbContextFactory<InventoryDbContext>(options =>
     options.UseNpgsql(NeonConnection.Runtime(builder.Configuration, builder.Environment.IsDevelopment())));
 builder.Services.AddScoped<InventoryService>();
 builder.Services.AddScoped<IPhotoStorage, CloudinaryPhotoStorage>();
+builder.Services.AddSingleton<PhotoWorkGate>();
+builder.Services.AddHttpClient("private-photos", client => client.Timeout = TimeSpan.FromSeconds(45))
+    .RemoveAllLoggers() // Signed server-only delivery URLs must not appear in HttpClient logs.
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 
 var app = builder.Build();
 
@@ -427,8 +494,8 @@ app.Use(async (context, next) =>
 if (identityEnabled)
 {
     app.UseRouting();
-    app.UseRateLimiter();
     app.UseAuthentication();
+    app.UseRateLimiter();
     app.Use(async (context, next) =>
     {
         if (context.User.Identity?.IsAuthenticated == true)
@@ -465,6 +532,7 @@ if (identityEnabled)
 {
     components.RequireAuthorization(InventoryPolicies.Read);
     SecurityEndpoints.Map(app);
+    PhotoEndpoints.Map(app);
 }
 
 app.Run();

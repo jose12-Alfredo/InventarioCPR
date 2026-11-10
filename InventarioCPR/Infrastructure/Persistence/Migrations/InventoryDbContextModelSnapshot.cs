@@ -419,10 +419,16 @@ namespace InventarioCPR.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<long?>("ByteLength")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("CloudinaryPublicId")
                         .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
+
+                    b.Property<long?>("CloudinaryVersion")
+                        .HasColumnType("bigint");
 
                     b.Property<Guid>("EquipmentId")
                         .HasColumnType("uuid");
@@ -432,22 +438,188 @@ namespace InventarioCPR.Infrastructure.Persistence.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
 
+                    b.Property<string>("Format")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<int?>("Height")
+                        .HasColumnType("integer");
+
                     b.Property<Guid?>("InspectionId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Observation")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("Sha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Source")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<DateTimeOffset>("UploadedAtUtc")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UploadedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("UploadedByName")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<int?>("Width")
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
                     b.HasIndex("CloudinaryPublicId")
                         .IsUnique();
 
-                    b.HasIndex("EquipmentId");
+                    b.HasIndex("EquipmentId", "Sha256")
+                        .IsUnique()
+                        .HasFilter("\"Sha256\" IS NOT NULL");
 
                     b.HasIndex("InspectionId", "EquipmentId");
 
-                    b.ToTable("photo_evidence", (string)null);
+                    b.HasIndex("EquipmentId", "UploadedAtUtc", "Id");
+
+                    b.ToTable("photo_evidence", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_photo_evidence_metadata", "\"Sha256\" IS NULL OR (\"Sha256\" ~ '^[0-9A-F]{64}$' AND \"Format\" IS NOT NULL AND \"Width\" IS NOT NULL AND \"Height\" IS NOT NULL AND \"ByteLength\" IS NOT NULL AND \"CloudinaryVersion\" IS NOT NULL AND \"Format\" IN ('jpg','png') AND \"Width\" > 0 AND \"Height\" > 0 AND \"Width\"::bigint * \"Height\" <= 25000000 AND \"ByteLength\" BETWEEN 1 AND 10485760 AND \"CloudinaryVersion\" > 0 AND \"UploadedById\" IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("InventarioCPR.Infrastructure.Persistence.Models.PhotoPrincipalPeriod", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ActorId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ActorName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("EquipmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("FromUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("PhotoId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ToUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EquipmentId")
+                        .IsUnique()
+                        .HasFilter("\"ToUtc\" IS NULL");
+
+                    b.HasIndex("PhotoId", "EquipmentId");
+
+                    b.ToTable("photo_principal_periods", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_photo_principal_period", "\"ToUtc\" IS NULL OR \"ToUtc\" > \"FromUtc\"");
+                        });
+                });
+
+            modelBuilder.Entity("InventarioCPR.Infrastructure.Persistence.Models.PhotoUpload", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ActorId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ActorName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("BatchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long?>("ByteLength")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("CompletedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("EquipmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("EvidenceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EvidenceType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Format")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<int?>("Height")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Sha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<int?>("Width")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EvidenceId", "EquipmentId");
+
+                    b.HasIndex("EquipmentId", "ActorId", "BatchId", "Position")
+                        .IsUnique();
+
+                    b.ToTable("photo_uploads", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_photo_upload_completed", "(\"CompletedAtUtc\" IS NULL) = (\"EvidenceId\" IS NULL)");
+
+                            t.HasCheckConstraint("CK_photo_upload_metadata", "\"Sha256\" IS NULL OR (\"Sha256\" ~ '^[0-9A-F]{64}$' AND \"Format\" IS NOT NULL AND \"Width\" IS NOT NULL AND \"Height\" IS NOT NULL AND \"ByteLength\" IS NOT NULL AND \"Format\" IN ('jpg','png') AND \"Width\" > 0 AND \"Height\" > 0 AND \"Width\"::bigint * \"Height\" <= 25000000 AND \"ByteLength\" BETWEEN 1 AND 10485760)");
+
+                            t.HasCheckConstraint("CK_photo_upload_position", "\"Position\" BETWEEN 0 AND 9");
+
+                            t.HasCheckConstraint("CK_photo_upload_source", "\"Source\" IN ('Archivo','Camara')");
+
+                            t.HasCheckConstraint("CK_photo_upload_type", "\"EvidenceType\" IN ('General','Serial','Accesorio')");
+                        });
                 });
 
             modelBuilder.Entity("InventarioCPR.Infrastructure.Persistence.Models.RamModule", b =>
@@ -881,6 +1053,37 @@ namespace InventarioCPR.Infrastructure.Persistence.Migrations
                     b.Navigation("Equipment");
 
                     b.Navigation("Inspection");
+                });
+
+            modelBuilder.Entity("InventarioCPR.Infrastructure.Persistence.Models.PhotoPrincipalPeriod", b =>
+                {
+                    b.HasOne("InventarioCPR.Infrastructure.Persistence.Models.Equipment", null)
+                        .WithMany()
+                        .HasForeignKey("EquipmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("InventarioCPR.Infrastructure.Persistence.Models.PhotoEvidence", null)
+                        .WithMany()
+                        .HasForeignKey("PhotoId", "EquipmentId")
+                        .HasPrincipalKey("Id", "EquipmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("InventarioCPR.Infrastructure.Persistence.Models.PhotoUpload", b =>
+                {
+                    b.HasOne("InventarioCPR.Infrastructure.Persistence.Models.Equipment", null)
+                        .WithMany()
+                        .HasForeignKey("EquipmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("InventarioCPR.Infrastructure.Persistence.Models.PhotoEvidence", null)
+                        .WithMany()
+                        .HasForeignKey("EvidenceId", "EquipmentId")
+                        .HasPrincipalKey("Id", "EquipmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("InventarioCPR.Infrastructure.Persistence.Models.RamModule", b =>

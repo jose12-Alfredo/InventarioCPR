@@ -1,0 +1,22 @@
+.inventory-heading {
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.inventory-heading h1 {
+    margin-bottom: .45rem;
+    font-size: 2rem;
+}
+
+@media (max-width: 40rem) {
+    .inventory-heading {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 1rem;
+        margin-bottom: 1.25rem;
+    }
+
+    .inventory-heading p {
+        font-size: 1rem;
+    }
+}

@@ -506,7 +506,14 @@ p {
 }
 
 .inventory-heading.page-heading { margin-bottom: 1.5rem; }
-.main-content:has(.inventory-heading) { padding-top: clamp(1.25rem, 2vw, 2rem); }
+
+@media (min-width: 48.01rem) {
+    /* The repeated class outranks MainLayout's isolated padding without affecting other pages. */
+    .main-content.main-content:has(.inventory-heading) {
+        padding-top: clamp(1.5rem, 2vw, 2rem);
+        padding-inline: clamp(1.5rem, 2vw, 2rem);
+    }
+}
 
 .inventory-toolbar,
 .inventory-surface {

@@ -1,0 +1,212 @@
+@using InventarioCPR.Application.Photos
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<section class="equipment-photos" aria-label="Fotografías del equipo" @ref="root">
+    <header class="photo-heading"><h3>Galería del equipo</h3><button type="button" class="btn btn-secondary" disabled="@busy" @onclick="RefreshGalleryAsync">Actualizar</button></header>
+    @if (error is not null) { <p class="photo-error" role="alert">@error</p> }
+    @if (data is null) { <p role="status">Consultando fotografías privadas…</p> }
+    else if (!data.Enabled) { <p class="photo-note" role="status">@data.Message</p> }
+    else
+    {
+        <p class="photo-note">Las fotografías se conservan. Cambiar la principal no elimina las anteriores.</p>
+        @if (data.CanWrite)
+        {
+            <fieldset class="photo-upload" disabled="@busy">
+                <legend>Añadir fotografías</legend>
+                <p id="photo-limits-@EquipmentId">JPEG o PNG · hasta 10 fotos por lote · 10 MB y 25 megapíxeles por foto. HEIC no admitido.</p>
+                <div class="photo-pickers">
+                    <label>Seleccionar varias fotos<input class="photo-files" type="file" accept="image/jpeg,image/png" multiple aria-describedby="photo-limits-@EquipmentId" /></label>
+                    <label>Tomar foto<input class="photo-camera" type="file" accept="image/jpeg,image/png" capture="environment" aria-describedby="photo-limits-@EquipmentId" /></label>
+                </div>
+                <input class="photo-retry-file" type="file" accept="image/jpeg,image/png" hidden aria-label="Archivo para recuperar subida" />
+                @if (selection.Count > 0)
+                {
+                    <ul class="photo-selection">
+                        @for (var i = 0; i < selection.Count; i++)
+                        {
+                            var index = i;
+                            var item = selection[i];
+                            <li @key="item.Key">
+                                <img src="@item.Url" alt="Vista previa de @item.Name" loading="lazy" />
+                                <div class="photo-selection-fields">
+                                    <strong>@item.Name</strong>
+                                    <label for="photo-type-@item.Key">Tipo</label>
+                                    <select id="photo-type-@item.Key" @bind="item.Type" disabled="@(busy || item.Reserved)"><option>General</option><option>Serial</option><option>Accesorio</option></select>
+                                    <label for="photo-note-@item.Key">Observación</label>
+                                    <textarea id="photo-note-@item.Key" maxlength="2000" rows="2" @bind="item.Note" @bind:event="oninput" disabled="@(busy || item.Reserved)"></textarea>
+                                    <progress max="100" value="@item.Percent" aria-label="Progreso de @item.Name"></progress>
+                                    <span role="status">@item.Message</span>
+                                    <button type="button" class="btn btn-secondary" disabled="@busy" @onclick="() => RemoveAsync(index)">Quitar de la selección</button>
+                                </div>
+                            </li>
+                        }
+                    </ul>
+                    <button type="button" class="btn btn-primary" disabled="@busy" @onclick="UploadAsync">@(busy ? "Subiendo y guardando…" : "Subir fotografías / reintentar")</button>
+                }
+                @if (busy) { <p role="status">Espere la confirmación del servidor. Una transferencia al 100 % todavía puede estar guardándose.</p> }
+            </fieldset>
+            @if (data.Pending.Count > 0)
+            {
+                <details class="photo-pending"><summary>Subidas pendientes de recuperar (@data.Pending.Count)</summary>
+                    <p>Seleccione el mismo archivo. La reserva conserva el tipo y la observación originales; no sobrescribe fotografías.</p>
+                    @foreach (var pending in data.Pending)
+                    {
+                        <div><span>@pending.FileName · @pending.Type</span><button type="button" class="btn btn-secondary" disabled="@busy" @onclick="() => RetryAsync(pending)">Recuperar</button></div>
+                    }
+                </details>
+            }
+        }
+        else { <p class="photo-note">Su perfil permite consultar fotografías; no subirlas ni cambiar la principal.</p> }
+
+        @if (data.Items.Count == 0) { <p class="photo-empty">No hay fotografías en esta página. Las imágenes nuevas aparecerán aquí cuando el servidor confirme el guardado.</p> }
+        else
+        {
+            <ul class="photo-gallery">
+                @foreach (var item in data.Items)
+                {
+                    <li @key="item.Id">
+                        <button type="button" class="photo-thumbnail" @onclick="() => OpenViewer(item.ContentUrl, item.Type, item.Note)"><img src="@item.ThumbnailUrl" loading="lazy" alt="Ampliar fotografía @item.Type del equipo" /></button>
+                        <strong>@(item.IsPrincipal ? "Principal actual · " : "")@item.Type</strong>
+                        <small>@item.UploadedAtUtc.ToUniversalTime().ToString("dd/MM/yyyy HH:mm") UTC · @(item.Author ?? "Autor no registrado")</small>
+                        @if (!string.IsNullOrWhiteSpace(item.Note)) { <p>@item.Note</p> }
+                        @if (data.CanWrite && !item.IsPrincipal) { <button type="button" class="btn btn-secondary" disabled="@busy" @onclick="() => SetPrincipalAsync(item.Id)">Usar como principal</button> }
+                    </li>
+                }
+            </ul>
+        }
+        <details class="photo-history"><summary>Historial de fotografía principal</summary>
+            @if (data.PrincipalHistory.Count == 0) { <p>Sin cambios de principal en esta página.</p> }
+            @foreach (var period in data.PrincipalHistory)
+            {
+                <div class="photo-history-row">
+                    <button type="button" class="photo-history-image" @onclick='() => OpenViewer(PhotoRules.ContentUrl(EquipmentId, period.PhotoId), "Principal histórica", null)'><img src="@PhotoRules.ContentUrl(EquipmentId, period.PhotoId, true)" alt="Ampliar fotografía del periodo" loading="lazy" /></button>
+                    <p>Desde @period.FromUtc.ToUniversalTime().ToString("dd/MM/yyyy HH:mm") UTC<br />
+                        @(period.ToUtc is { } end ? $"Hasta {end.ToUniversalTime():dd/MM/yyyy HH:mm} UTC" : "Vigente")<br />Seleccionada por @period.Author</p>
+                </div>
+            }
+        </details>
+        <nav class="photo-pagination" aria-label="Páginas de fotografías"><button type="button" class="btn btn-secondary" disabled="@(busy || page == 0)" @onclick="() => ChangePageAsync(-1)">Anterior</button><span>Página @(page + 1)</span><button type="button" class="btn btn-secondary" disabled="@(busy || !data.HasMore)" @onclick="() => ChangePageAsync(1)">Siguiente</button></nav>
+    }
+    <dialog class="photo-viewer" @ref="viewer" aria-labelledby="photo-viewer-title-@EquipmentId">
+        <header><h3 id="photo-viewer-title-@EquipmentId">@viewerTitle</h3><button type="button" class="btn btn-secondary" @onclick="CloseViewerAsync">Cerrar imagen</button></header>
+        @if (viewerUrl is not null) { <img src="@viewerUrl" alt="Fotografía ampliada del equipo: @viewerTitle" /> }
+        @if (!string.IsNullOrWhiteSpace(viewerNote)) { <p>@viewerNote</p> }
+        <nav aria-label="Navegar imágenes"><button type="button" class="btn btn-secondary" @onclick="() => NavigateViewer(-1)" disabled="@(data is null || data.Items.Count < 2)">Anterior imagen</button><button type="button" class="btn btn-secondary" @onclick="() => NavigateViewer(1)" disabled="@(data is null || data.Items.Count < 2)">Siguiente imagen</button></nav>
+    </dialog>
+</section>
+
+@code {
+    [Parameter] public Guid EquipmentId { get; set; }
+    [Parameter] public EventCallback Changed { get; set; }
+    private ElementReference root, viewer;
+    private IJSObjectReference? module;
+    private DotNetObjectReference<EquipmentPhotos>? callback;
+    private PhotoPage? data;
+    private readonly List<Preview> selection = [];
+    private string? error, viewerUrl, viewerNote;
+    private string viewerTitle = "Fotografía";
+    private bool busy, openViewer;
+    private int page, loadSequence;
+    private string BaseUrl => $"/api/equipment/{EquipmentId}/photos";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            module = await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Inventory/EquipmentPhotos.razor.js");
+            callback = DotNetObjectReference.Create(this);
+            await module.InvokeVoidAsync("bind", root, callback);
+            await ReloadAsync();
+        }
+        if (module is not null)
+        {
+            await module.InvokeVoidAsync("bindInputs", root);
+            if (openViewer) { openViewer = false; await module.InvokeVoidAsync("showViewer", viewer, callback); }
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        if (module is null) return;
+        var sequence = ++loadSequence;
+        try
+        {
+            var loaded = await module.InvokeAsync<PhotoPage>("request", BaseUrl + $"?page={page}", "GET", null);
+            if (sequence == loadSequence) { data = loaded; page = loaded.Page; }
+        }
+        catch (JSException) { error = "No se pudo cargar la galería. Compruebe su sesión y la habilitación de fotografías, y pulse Actualizar."; }
+        await InvokeAsync(StateHasChanged);
+    }
+    private async Task RefreshGalleryAsync() { error = null; await ReloadAsync(); }
+
+    [JSInvokable] public Task SelectionChanged(Preview[] items)
+    {
+        selection.Clear(); selection.AddRange(items); error = null;
+        return InvokeAsync(StateHasChanged);
+    }
+    [JSInvokable] public Task SelectionError(string message) { error = message; return InvokeAsync(StateHasChanged); }
+    [JSInvokable] public Preview[] GetSelectionMetadata() => selection.ToArray();
+    [JSInvokable] public Task UploadProgress(string key, int percent, string message, bool reserved)
+    {
+        var item = selection.FirstOrDefault(x => x.Key == key);
+        if (item is not null) { item.Percent = percent; item.Message = message; item.Reserved |= reserved; }
+        return InvokeAsync(StateHasChanged);
+    }
+    [JSInvokable] public void NavigateViewer(int direction)
+    {
+        if (data?.Items.Count is not > 0) return;
+        var index = data.Items.ToList().FindIndex(x => x.ContentUrl == viewerUrl);
+        var photo = data.Items[(index + direction + data.Items.Count) % data.Items.Count];
+        viewerUrl = photo.ContentUrl; viewerTitle = photo.Type; viewerNote = photo.Note;
+        StateHasChanged();
+    }
+
+    private async Task UploadAsync()
+    {
+        if (module is null || busy) return;
+        busy = true; error = null;
+        try { await module.InvokeVoidAsync("upload", root, BaseUrl, selection); await Changed.InvokeAsync(); }
+        catch (JSException) { error = "No se completaron todas las subidas. Reintente los archivos pendientes; las fotografías ya guardadas se conservan."; }
+        finally { busy = false; await ReloadAsync(); }
+    }
+    private async Task SetPrincipalAsync(Guid photo)
+    {
+        if (module is null || busy) return;
+        busy = true;
+        try { await module.InvokeVoidAsync("request", $"{BaseUrl}/{photo}/principal", "POST", null); await Changed.InvokeAsync(); }
+        catch (JSException) { error = "No se confirmó el cambio de principal. Actualice para comprobar el estado guardado."; }
+        finally { busy = false; await ReloadAsync(); }
+    }
+    private async Task RetryAsync(PhotoPendingItem pending)
+    {
+        if (module is not null) await module.InvokeVoidAsync("chooseRetry", root, pending);
+    }
+    private async Task RemoveAsync(int index)
+    {
+        if (module is not null) await module.InvokeVoidAsync("remove", root, index, selection);
+    }
+    private async Task ChangePageAsync(int change) { page = Math.Max(0, page + change); await ReloadAsync(); }
+    private void OpenViewer(string url, string title, string? note) { viewerUrl = url; viewerTitle = title; viewerNote = note; openViewer = true; }
+    private async Task CloseViewerAsync() { if (module is not null) await module.InvokeVoidAsync("closeViewer", viewer); }
+    public async ValueTask DisposeAsync()
+    {
+        if (module is not null)
+        {
+            try { await module.InvokeVoidAsync("dispose", root, viewer); await module.DisposeAsync(); } catch (JSDisconnectedException) { }
+        }
+        callback?.Dispose();
+    }
+    public sealed class Preview
+    {
+        public string Key { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string Url { get; set; } = "";
+        public string Type { get; set; } = "General";
+        public string Note { get; set; } = "";
+        public string Source { get; set; } = "Archivo";
+        public int Percent { get; set; }
+        public string Message { get; set; } = "Pendiente de subir";
+        public bool Reserved { get; set; }
+    }
+}

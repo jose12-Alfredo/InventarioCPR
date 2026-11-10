@@ -1,71 +1,70 @@
 using CloudinaryDotNet;
 using CloudinaryDotNet.Actions;
 using InventarioCPR.Application.Photos;
-using SkiaSharp;
+using System.Net;
+using System.Security.Cryptography;
 
 namespace InventarioCPR.Infrastructure.Photos;
 
-public sealed class CloudinaryPhotoStorage(IConfiguration configuration) : IPhotoStorage
+public sealed class CloudinaryPhotoStorage(IConfiguration configuration, IHttpClientFactory clients) : IPhotoStorage
 {
-    private const int MaxBytes = 10 * 1024 * 1024;
-    private const long MaxPixels = 25_000_000;
-
-    public async Task<string> UploadAsync(Stream content, string fileName, CancellationToken cancellationToken = default)
+    public async Task<StoredPhoto> StoreAsync(PhotoContent content, string publicId, CancellationToken cancellationToken = default)
     {
-        var extension = Path.GetExtension(fileName).ToLowerInvariant();
-        if (extension is not (".jpg" or ".jpeg" or ".png"))
-            throw new ArgumentException("Solo se admiten fotografías JPEG o PNG.", nameof(fileName));
-
-        await using var input = new MemoryStream();
-        var chunk = new byte[81920];
-        int read;
-        while ((read = await content.ReadAsync(chunk, cancellationToken)) > 0)
+        var client = CreateClient();
+        var existing = await client.GetResourceAsync(new GetResourceParams(publicId) { Type = "authenticated", ResourceType = ResourceType.Image }, cancellationToken);
+        if (existing.Error is null)
         {
-            if (input.Length + read > MaxBytes)
-                throw new ArgumentException("La fotografía supera el límite de 10 MB.", nameof(content));
-            await input.WriteAsync(chunk.AsMemory(0, read), cancellationToken);
+            // Recover a previous successful cloud write after a lost response / failed DB commit.
+            var previous = await ReadAsync(publicId, long.Parse(existing.Version, System.Globalization.CultureInfo.InvariantCulture), content.Format, cancellationToken);
+            if (!CryptographicOperations.FixedTimeEquals(SHA256.HashData(previous), SHA256.HashData(content.Bytes)))
+                throw new PhotoException("La reserva ya contiene otra imagen; no se sobrescribirá.");
+            return new StoredPhoto(publicId, long.Parse(existing.Version, System.Globalization.CultureInfo.InvariantCulture));
         }
+        if (existing.StatusCode != HttpStatusCode.NotFound)
+            throw new PhotoException("Cloudinary no pudo comprobar la reserva. Reintente la misma imagen.", 502);
 
-        input.Position = 0;
-        using var codec = SKCodec.Create(new SKManagedStream(input, false));
-        var expectedFormat = extension == ".png" ? SKEncodedImageFormat.Png : SKEncodedImageFormat.Jpeg;
-        if (codec is null || codec.Info.Width < 1 || codec.Info.Height < 1 ||
-            (long)codec.Info.Width * codec.Info.Height > MaxPixels || codec.EncodedFormat != expectedFormat)
-            throw new ArgumentException("El contenido de la fotografía no coincide con un formato permitido.", nameof(content));
-        if (codec.FrameCount != 1)
-            throw new ArgumentException("No se admiten fotografías animadas.", nameof(content));
-
-        // Los píxeles decodificados se vuelven a codificar; no se copian EXIF ni otros metadatos originales.
-        using var bitmap = SKBitmap.Decode(codec);
-        if (bitmap is null)
-            throw new ArgumentException("No se pudo decodificar la fotografía.", nameof(content));
-        using var image = SKImage.FromBitmap(bitmap);
-        using var encoded = image.Encode(expectedFormat, expectedFormat == SKEncodedImageFormat.Jpeg ? 90 : 100);
-        if (encoded is null)
-            throw new ArgumentException("No se pudo procesar la fotografía.", nameof(content));
-        await using var sanitized = new MemoryStream();
-        encoded.SaveTo(sanitized);
-        sanitized.Position = 0;
-
-        var cloudName = configuration["Cloudinary:CloudName"];
-        var apiKey = configuration["Cloudinary:ApiKey"];
-        var apiSecret = configuration["Cloudinary:ApiSecret"];
-        if (string.IsNullOrWhiteSpace(cloudName) || string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(apiSecret))
-            throw new InvalidOperationException("Configure Cloudinary en User Secrets.");
-
-        var cloudinary = new Cloudinary(new Account(cloudName, apiKey, apiSecret));
-        var publicId = $"inventario/equipos/{Guid.NewGuid():N}";
-        var result = await cloudinary.UploadAsync(new ImageUploadParams
+        using var stream = new MemoryStream(content.Bytes, false);
+        var result = await client.UploadAsync(new ImageUploadParams
         {
-            File = new FileDescription("evidencia" + (extension == ".png" ? ".png" : ".jpg"), sanitized),
-            PublicId = publicId,
-            Type = "authenticated",
-            Overwrite = false,
-            UniqueFilename = false
+            File = new FileDescription("evidencia." + content.Format, stream),
+            PublicId = publicId, Type = "authenticated", Overwrite = false, UniqueFilename = false,
+            AssetFolder = configuration["Cloudinary:TestAssetFolder"]
         }, cancellationToken);
+        if (result.Error is not null || result.PublicId != publicId)
+            throw new PhotoException("No se confirmó la subida. Reintente el mismo archivo para recuperar la operación.", 502);
+        return new StoredPhoto(publicId, long.Parse(result.Version, System.Globalization.CultureInfo.InvariantCulture));
+    }
 
-        if (result.Error is not null || string.IsNullOrWhiteSpace(result.PublicId))
-            throw new InvalidOperationException("No se pudo almacenar la fotografía.");
-        return result.PublicId;
+    public async Task<byte[]> ReadAsync(string publicId, long? version, string? format, CancellationToken cancellationToken = default)
+    {
+        var cloudinary = CreateClient();
+        if (version is null || format is null)
+        {
+            var resource = await cloudinary.GetResourceAsync(new GetResourceParams(publicId) { Type = "authenticated", ResourceType = ResourceType.Image }, cancellationToken);
+            if (resource.Error is not null) throw new PhotoException("La imagen privada no está disponible.", 502);
+            version = long.Parse(resource.Version, System.Globalization.CultureInfo.InvariantCulture);
+            format = resource.Format;
+        }
+        if (format is not ("jpg" or "jpeg" or "png")) throw new PhotoException("El formato histórico no está habilitado.", 415);
+        var url = cloudinary.Api.UrlImgUp.Type("authenticated").Signed(true).Secure(true)
+            .Version(version.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)).Format(format).BuildUrl(publicId);
+        var uri = new Uri(url);
+        if (uri.Scheme != "https" || uri.Host != "res.cloudinary.com")
+            throw new PhotoException("Destino de almacenamiento no permitido.", 502);
+        // This signed URL is server-only. No redirects, public URLs or credentials are returned to a browser.
+        using var response = await clients.CreateClient("private-photos").GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        if (!response.IsSuccessStatusCode) throw new PhotoException("No se pudo recuperar la imagen privada.", 502);
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        return await PhotoImageProcessor.ReadBoundedAsync(stream, cancellationToken);
+    }
+
+    private Cloudinary CreateClient()
+    {
+        var name = configuration["Cloudinary:CloudName"];
+        var key = configuration["Cloudinary:ApiKey"];
+        var secret = configuration["Cloudinary:ApiSecret"];
+        if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(secret))
+            throw new PhotoException("Cloudinary no está configurado en el servidor.", 503);
+        return new Cloudinary(new Account(name, key, secret));
     }
 }

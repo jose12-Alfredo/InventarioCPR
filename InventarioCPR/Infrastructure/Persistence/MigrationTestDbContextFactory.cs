@@ -23,6 +23,11 @@ public sealed class MigrationTestDbContextFactory : IDesignTimeDbContextFactory<
         var expectedHost = expected.Replace("-pooler.", ".", StringComparison.OrdinalIgnoreCase);
         if (!string.Equals(host, expectedHost, StringComparison.OrdinalIgnoreCase) || test.Database != "neondb")
             throw new InvalidOperationException("El destino de la migración no coincide con la rama de prueba aprobada.");
+        var approvedPhotoHost = Environment.GetEnvironmentVariable("INVENTARIOCPR_APPROVED_PHOTO_HOST");
+        if (approvedPhotoHost is not null &&
+            (Environment.GetEnvironmentVariable("INVENTARIOCPR_APPROVED_PHOTO_BRANCH") != "br-flat-smoke-b4kdmosq" ||
+             !string.Equals(host, approvedPhotoHost.Replace("-pooler.", ".", StringComparison.OrdinalIgnoreCase), StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException("El destino no coincide con el endpoint y rama confirmados para fotografías.");
 
         var defaultRaw = configuration.GetConnectionString("NeonDirect");
         if (!string.IsNullOrWhiteSpace(defaultRaw))

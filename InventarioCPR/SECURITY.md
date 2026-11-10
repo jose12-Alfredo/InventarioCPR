@@ -71,4 +71,8 @@ Una instancia posterior bajo `JetBrains.Debugger.Worker` volvió a agotarse incl
 
 ## Prueba física pendiente
 
+### Fotografías, etapa A validada en pruebas
+
+`PHOTOS_STAGE_A.md` describe la migración aditiva y el flujo privado; `PHOTOS_STAGE_A_VALIDATION.md` documenta su aplicación autorizada exclusivamente en `test-migracion-inicial` y las pruebas reales. El repositorio mantiene PhotosEnabled=false; la función está habilitada en User Secrets local para datos ficticios. Los endpoints exigen Identity, lectura/escritura según políticas actuales y comprobación de cuenta/sello/roles vigente en servidor; cada descarga verifica que la evidencia pertenece al equipo de la URL. CSRF protege mutaciones y las URLs privadas de Cloudinary permanecen dentro del servidor. Fechas de carga y actores se asignan desde servidor; origen cámara/archivo es declarado y no prueba fecha de captura. Las consultas de Identity del circuito Blazor se serializan para evitar operaciones concurrentes sobre su DbContext, sin relajar permisos. Se probaron entrega privada, persistencia, cambio concurrente de principal y recuperación ante fallos de Cloudinary/PostgreSQL; no se modificaron roles ni se habilitó acceso LAN o Production.
+
 Con HTTPS LAN, Identity y cuentas de prueba **activados después de una autorización separada**: desde un teléfono conectado a la red privada indicada, abrir la URL HTTPS cuyo certificado se confíe en Android/iPhone; verificar login, listado, filtros, registro ficticio, teclado virtual, pestañas/pasos, `wss` de Blazor Interactive Server y reconexión tras interrumpir Wi-Fi; comprobar denegación a Consulta para guardar y cierre efectivo de sesión. Aún no se realizaron estas pruebas físicas ni se habilitó acceso remoto.

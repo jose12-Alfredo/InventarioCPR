@@ -1,0 +1,47 @@
+.equipment-photos { min-width: 0; font-size: .85rem; }
+.photo-heading { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+.photo-heading h3 { margin: 0; font-size: 1rem; }
+.equipment-photos .btn, .equipment-photos summary { min-height: 44px; min-width: 44px; font-size: .85rem; }
+.photo-note, .photo-empty { color: var(--cpr-muted); line-height: 1.55; }
+.photo-error { color: var(--cpr-danger); padding: .75rem; background: #fff0ee; border-radius: var(--radius-sm); }
+.photo-upload { min-width: 0; margin: 1rem 0; padding: .75rem 0; border: 0; border-block: 1px solid var(--cpr-border); }
+.photo-upload legend { font-weight: 700; padding-right: .5rem; }
+.photo-upload p { margin-top: .25rem; color: var(--cpr-muted); }
+.photo-pickers { display: grid; gap: .75rem; }
+.photo-pickers label { display: grid; gap: .4rem; font-weight: 650; }
+.photo-pickers input { max-width: 100%; min-width: 0; min-height: 44px; font-size: .85rem; }
+.photo-pickers input::file-selector-button { min-height: 44px; margin-right: .5rem; padding: .5rem .65rem; border: 1px solid var(--cpr-border); border-radius: var(--radius-sm); background: var(--cpr-surface); color: var(--cpr-violet-dark); cursor: pointer; }
+.photo-selection, .photo-gallery { list-style: none; padding: 0; margin: 1rem 0; display: grid; gap: 1rem; }
+.photo-selection li { display: grid; gap: .75rem; padding-bottom: 1rem; border-bottom: 1px solid var(--cpr-border); min-width: 0; }
+.photo-selection img { width: 100%; height: 9rem; object-fit: contain; background: var(--cpr-bg); }
+.photo-selection-fields { display: grid; gap: .35rem; min-width: 0; }
+.photo-selection-fields strong, .photo-gallery p { overflow-wrap: anywhere; }
+.photo-selection-fields label { font-weight: 650; }
+.photo-selection-fields select, .photo-selection-fields textarea { width: 100%; min-width: 0; min-height: 44px; padding: .5rem; border: 1px solid var(--cpr-border); border-radius: var(--radius-sm); background: var(--cpr-surface); color: var(--cpr-text); font: inherit; }
+.photo-selection-fields progress { width: 100%; accent-color: var(--cpr-violet); }
+.photo-gallery { grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); }
+.photo-gallery li { min-width: 0; display: flex; flex-direction: column; gap: .4rem; padding-bottom: 1rem; border-bottom: 1px solid var(--cpr-border); }
+.photo-gallery strong { font-size: .85rem; }
+.photo-gallery small { font-size: .75rem; color: var(--cpr-muted); overflow-wrap: anywhere; }
+.photo-gallery p { margin: 0; }
+.photo-gallery .btn { margin-top: auto; }
+.photo-thumbnail, .photo-history-image { border: 0; padding: 0; background: var(--cpr-bg); border-radius: var(--radius-sm); cursor: pointer; overflow: hidden; }
+.photo-thumbnail img { display: block; width: 100%; height: 8rem; object-fit: contain; }
+.photo-history, .photo-pending { border-bottom: 1px solid var(--cpr-border); padding: .5rem 0; }
+.photo-history summary, .photo-pending summary { display: list-item; align-content: center; cursor: pointer; font-weight: 650; padding-block: .5rem; }
+.photo-history-row { display: grid; grid-template-columns: 4rem minmax(0, 1fr); align-items: center; gap: .75rem; }
+.photo-history-image img { display: block; width: 4rem; height: 4rem; object-fit: contain; }
+.photo-pending > div { display: grid; gap: .5rem; margin-block: .75rem; overflow-wrap: anywhere; }
+.photo-pagination { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .5rem; margin-top: 1rem; }
+.photo-viewer { width: min(70rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); padding: 1rem; border: 0; border-radius: var(--radius-md); background: var(--cpr-surface); color: var(--cpr-text); overflow-y: auto; }
+.photo-viewer::backdrop { background: color-mix(in srgb, var(--cpr-violet-dark) 85%, transparent); }
+.photo-viewer header, .photo-viewer nav { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+.photo-viewer header h3 { margin: 0; font-size: 1.05rem; }
+.photo-viewer > img { display: block; width: 100%; height: min(65dvh, 50rem); object-fit: contain; margin-block: 1rem; background: var(--cpr-bg); }
+.photo-viewer > p { overflow-wrap: anywhere; }
+.equipment-photos :is(button, input, select, textarea, summary):focus-visible { outline: 2px solid var(--cpr-violet); outline-offset: 2px; }
+@media (max-width: 40rem) {
+    .photo-viewer { width: 100vw; height: 100dvh; max-height: 100dvh; max-width: 100vw; margin: 0; border-radius: 0; padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left)); }
+    .photo-selection-fields select, .photo-selection-fields textarea { font-size: 1rem; }
+    .photo-viewer nav .btn { flex: 1; }
+}

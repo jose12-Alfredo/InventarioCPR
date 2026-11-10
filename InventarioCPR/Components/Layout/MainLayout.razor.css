@@ -54,7 +54,7 @@
 .brand-lockup small {
     overflow: hidden;
     color: #cdbbe5;
-    font-size: 0.68rem;
+    font-size: 0.75rem;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -136,7 +136,7 @@
     min-height: 5.25rem;
     padding: 0 2rem;
     border-bottom: 1px solid var(--cpr-border);
-    background: rgba(255,255,255,.96);
+    background: #fff;
 }
 
 .topbar-title,

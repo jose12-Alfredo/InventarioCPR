@@ -42,7 +42,7 @@ public sealed class StorageInput
 }
 
 public sealed record EquipmentRow(Guid Id, string Code, string Name, string Category,
-    string? Brand, string? Model, string? PhysicalCondition, string? OperationalCondition);
+    string? Brand, string? Model, string? PhysicalCondition, string? OperationalCondition, string? PhotoUrl);
 public sealed record EquipmentPage(IReadOnlyList<EquipmentRow> Rows, int Total);
 public sealed record ConditionOption(string Value, string Label);
 

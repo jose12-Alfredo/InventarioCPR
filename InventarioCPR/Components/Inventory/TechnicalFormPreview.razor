@@ -6,120 +6,137 @@
 @implements IAsyncDisposable
 
 <section class="inventory-workbench" aria-label="Consulta y registro de equipos">
-    @if (details is null)
-    {
-        <div class="inventory-workbench__toolbar">
-            <div class="inventory-workbench__heading">
-                <div><h2 id="inventory-list-title">Equipos registrados</h2><p>Seleccione un equipo para consultar su expediente.</p></div>
-                <div class="inventory-workbench__buttons">
-                    <button type="button" class="btn btn-secondary" @onclick="() => OpenNewAsync(true)" disabled="@(!interactiveReady || !canWrite)">Registro rápido</button>
-                    <button type="button" class="btn btn-primary" @onclick="() => OpenNewAsync(false)" disabled="@(!interactiveReady || !canWrite)">Nuevo equipo</button>
-                </div>
-            </div>
-            <div class="inventory-workbench__filters" role="search" aria-label="Filtrar equipos">
-                <div class="field"><label for="inventory-search">Buscar equipo</label>
-                    <input id="inventory-search" type="search" placeholder="Código, equipo, marca o modelo" disabled="@(!interactiveReady)" @bind="search" @bind:event="oninput" @bind:after="DebouncedRefreshAsync" /></div>
-                <div class="field"><label for="inventory-category">Categoría</label>
-                    <select id="inventory-category" disabled="@(!interactiveReady)" @bind="categoryFilter" @bind:after="ApplyFiltersAsync">
-                        <option value="">Todas</option>
-                        <option value="desktop">Computadora de escritorio</option><option value="laptop">Laptop</option>
-                        <option value="monitor">Monitor</option><option value="camera">Cámara</option>
-                        <option value="external-disk">Disco externo</option><option value="peripheral">Periférico</option>
-                        <option value="recording">Equipo de grabación</option><option value="other">Otro dispositivo</option>
-                    </select></div>
-                <div class="field"><label for="inventory-condition">Condición</label>
-                    <select id="inventory-condition" disabled="@(!interactiveReady)" @bind="conditionFilter" @bind:after="ApplyFiltersAsync">
-                        <option value="">Todas</option><option value="physical">Con condición física</option>
-                        <option value="operational">Con condición operativa</option><option value="unrecorded">Sin inspección</option>
-                        @foreach (var option in conditionOptions)
+    <div class="inventory-workbench__layout">
+        <div class="inventory-workbench__list" aria-labelledby="inventory-list-title" @ref="listPanel">
+            <header class="inventory-workbench__toolbar">
+                <div class="inventory-workbench__heading">
+                    <div>
+                        <h2 id="inventory-list-title">Equipos registrados</h2>
+                        <p>Seleccione un equipo para consultar su expediente.</p>
+                    </div>
+                    <div class="inventory-workbench__actions-wrap">
+                        <div class="inventory-workbench__buttons">
+                            <button type="button" class="btn btn-secondary" title="@WriteRestriction" @onclick="() => OpenNewAsync(true)" disabled="@(!interactiveReady || !canWrite)">Registro rápido</button>
+                            <button type="button" class="btn btn-primary" title="@WriteRestriction" @onclick="() => OpenNewAsync(false)" disabled="@(!interactiveReady || !canWrite)"><AppIcon Name="plus-circle" /> Nuevo equipo</button>
+                        </div>
+                        @if (interactiveReady && !canWrite)
                         {
-                            <option value="@option.Value">@option.Label</option>
+                            <small class="inventory-workbench__write-note">Creación y edición no disponibles para este perfil o entorno.</small>
                         }
-                    </select></div>
-                <button type="button" class="btn btn-secondary" disabled="@(!interactiveReady)" @onclick="ClearFiltersAsync">Limpiar</button>
-            </div>
-        </div>
-        @if (error is not null) { <p class="technical-preview__feedback technical-preview__feedback--error" role="alert">@error</p> }
-        @if (success is not null) { <p class="technical-preview__feedback" role="status">@success</p> }
-        @if (loading) { <p role="status" class="inventory-workbench__empty">Cargando equipos…</p> }
-        else if (rows.Count == 0)
-        { <p class="inventory-workbench__empty">No hay equipos para estos filtros. Pruebe otra búsqueda o registre el primero.</p> }
-        else
-        {
-            <p class="inventory-workbench__count" role="status">@(total > InventoryService.PageSize ? $"Mostrando {currentPage * InventoryService.PageSize + 1}–{currentPage * InventoryService.PageSize + rows.Count} de {total} equipos" : $"{total} equipo{(total == 1 ? "" : "s")}")</p>
-            <table class="inventory-workbench__table">
-                <thead><tr><th scope="col">Código</th><th scope="col">Equipo</th><th scope="col">Categoría</th><th scope="col">Condición</th><th scope="col"><span class="sr-only">Acción</span></th></tr></thead>
-                <tbody>
+                    </div>
+                </div>
+                <div class="inventory-workbench__filters" role="search" aria-label="Filtrar equipos">
+                    <div class="field inventory-workbench__search">
+                        <label for="inventory-search">Buscar equipo</label>
+                        <span><AppIcon Name="search" /><input id="inventory-search" type="search" placeholder="Código, equipo, marca o modelo…" disabled="@(!interactiveReady)" @bind="search" @bind:event="oninput" @bind:after="DebouncedRefreshAsync" /></span>
+                    </div>
+                    <div class="field">
+                        <label for="inventory-category">Categoría</label>
+                        <select id="inventory-category" disabled="@(!interactiveReady)" @bind="categoryFilter" @bind:after="ApplyFiltersAsync">
+                            <option value="">Todas</option><option value="desktop">Computadora de escritorio</option><option value="laptop">Laptop</option><option value="monitor">Monitor</option><option value="camera">Cámara</option><option value="external-disk">Disco externo</option><option value="peripheral">Periférico</option><option value="recording">Equipo de grabación</option><option value="other">Otro dispositivo</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="inventory-condition">Condición</label>
+                        <select id="inventory-condition" disabled="@(!interactiveReady)" @bind="conditionFilter" @bind:after="ApplyFiltersAsync">
+                            <option value="">Todas</option><option value="physical">Con condición física</option><option value="operational">Con condición operativa</option><option value="unrecorded">Sin inspección</option>
+                            @foreach (var option in conditionOptions) { <option value="@option.Value">@option.Label</option> }
+                        </select>
+                    </div>
+                    <button type="button" class="btn btn-secondary inventory-workbench__clear" disabled="@(!interactiveReady)" @onclick="ClearFiltersAsync">Limpiar</button>
+                </div>
+            </header>
+
+            @if (error is not null) { <p class="technical-preview__feedback technical-preview__feedback--error" role="alert">@error</p> }
+            @if (success is not null) { <p class="technical-preview__feedback" role="status">@success</p> }
+
+            @if (loading)
+            {
+                <div role="status" class="inventory-workbench__empty"><span class="inventory-workbench__empty-icon"><AppIcon Name="inventory" /></span><strong>Cargando equipos…</strong></div>
+            }
+            else if (rows.Count == 0)
+            {
+                <div class="inventory-workbench__empty" role="status"><span class="inventory-workbench__empty-icon"><AppIcon Name="search" /></span><strong>No encontramos equipos</strong><p>Pruebe otra búsqueda o limpie los filtros aplicados.</p></div>
+            }
+            else
+            {
+                <div class="inventory-workbench__list-meta"><p class="inventory-workbench__count" role="status">@(total > InventoryService.PageSize ? $"Mostrando {currentPage * InventoryService.PageSize + 1}–{currentPage * InventoryService.PageSize + rows.Count} de {total} equipos" : $"{total} equipo{(total == 1 ? "" : "s")}")</p><span>Ordenados por código</span></div>
+                <div class="inventory-workbench__table-scroll">
+                    <table class="inventory-workbench__table">
+                        <thead><tr><th scope="col">Foto</th><th scope="col">Código</th><th scope="col">Equipo</th><th scope="col">Categoría</th><th scope="col">Responsable</th><th scope="col">Condición</th><th scope="col">Acciones</th></tr></thead>
+                        <tbody>
+                            @foreach (var row in rows)
+                            {
+                                var categoryKey = CategoryKey(row.Category);
+                                var isSelected = details?.Id == row.Id;
+                                <tr @key="row.Id" class="@(isSelected ? "is-selected" : null)" tabindex="0" aria-current="@(isSelected ? "true" : null)" aria-label="@row.Code, @row.Name. Abrir expediente" @onclick="() => OpenAsync(row.Id)" @onkeydown="e => HandleRowKeyDownAsync(e, row.Id)">
+                                    <td>
+                                        @if (PhotoAvailable(row.PhotoUrl)) { <img class="inventory-workbench__thumbnail" src="@row.PhotoUrl" alt="Fotografía de @row.Name" @onerror="() => MarkPhotoUnavailable(row.PhotoUrl)" /> }
+                                        else { <span class="inventory-workbench__thumbnail inventory-workbench__thumbnail--@categoryKey" role="img" aria-label="Sin fotografía disponible"><AppIcon Name="@CategoryIcon(categoryKey)" /></span> }
+                                    </td>
+                                    <td><strong class="inventory-workbench__code" title="@row.Code">@row.Code</strong></td>
+                                    <td><span class="inventory-workbench__equipment"><strong title="@row.Name">@row.Name</strong><small title="@ModelLine(row)">@ModelLine(row)</small></span></td>
+                                    <td><span class="inventory-workbench__category" title="@row.Category">@row.Category</span></td>
+                                    <td><span class="inventory-workbench__unavailable" title="Las asignaciones de responsables todavía no están habilitadas.">No disponible</span></td>
+                                    <td>@PrimaryConditionBadge(row.PhysicalCondition, row.OperationalCondition)</td>
+                                    <td><button type="button" class="inventory-workbench__open" disabled="@(!interactiveReady)" aria-current="@(isSelected ? "true" : "false")" @onclick:stopPropagation="true" @onclick="() => OpenAsync(row.Id)">Ver expediente<span class="sr-only"> de @row.Code</span></button></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <ul class="inventory-workbench__cards">
                     @foreach (var row in rows)
                     {
-                        <tr @key="row.Id"><td><strong>@row.Code</strong></td><td>@row.Name<br /><small>@(row.Model ?? row.Brand ?? "Sin modelo registrado")</small></td>
-                            <td>@row.Category</td><td>@(row.PhysicalCondition ?? row.OperationalCondition ?? "Sin inspección")</td>
-                            <td><button type="button" class="inventory-workbench__link" disabled="@(!interactiveReady)" @onclick="() => OpenAsync(row.Id)">Ver expediente <span class="sr-only">de @row.Code</span></button></td></tr>
+                        var categoryKey = CategoryKey(row.Category);
+                        <li @key="row.Id" class="@(details?.Id == row.Id ? "is-selected" : null)">
+                            <button type="button" class="inventory-workbench__card" disabled="@(!interactiveReady)" @onclick="() => OpenAsync(row.Id)" aria-label="Ver expediente de @row.Code, @row.Name">
+                                @if (PhotoAvailable(row.PhotoUrl)) { <img class="inventory-workbench__thumbnail" src="@row.PhotoUrl" alt="" @onerror="() => MarkPhotoUnavailable(row.PhotoUrl)" /> }
+                                else { <span class="inventory-workbench__thumbnail inventory-workbench__thumbnail--@categoryKey" aria-hidden="true"><AppIcon Name="@CategoryIcon(categoryKey)" /></span> }
+                                <span class="inventory-workbench__card-copy"><span class="inventory-workbench__card-top"><strong title="@row.Code">@row.Code</strong><span title="@row.Category">@row.Category</span></span><b title="@row.Name">@row.Name</b><small title="@ModelLine(row)">@ModelLine(row)</small><span class="inventory-workbench__card-responsible"><small>Responsable</small> No disponible</span>@PrimaryConditionBadge(row.PhysicalCondition, row.OperationalCondition)</span>
+                                <span class="inventory-workbench__card-action"><AppIcon Name="arrow" /></span>
+                            </button>
+                        </li>
                     }
-                </tbody>
-            </table>
-            <ul class="inventory-workbench__cards">
-                @foreach (var row in rows)
+                </ul>
+                @if (total > InventoryService.PageSize)
                 {
-                    <li @key="row.Id"><button type="button" class="inventory-workbench__card" disabled="@(!interactiveReady)" @onclick="() => OpenAsync(row.Id)" aria-label="Ver expediente de @row.Code, @row.Name">
-                        <span class="inventory-workbench__card-top"><strong>@row.Code</strong><span>@row.Category</span></span>
-                        <b>@row.Name</b><small>@(row.PhysicalCondition ?? row.OperationalCondition ?? "Sin inspección")</small>
-                        <span class="inventory-workbench__card-action">Ver expediente</span>
-                    </button></li>
+                    <nav class="inventory-workbench__pagination" aria-label="Páginas de equipos"><button type="button" class="btn btn-secondary" disabled="@(currentPage == 0)" @onclick="() => LoadPageAsync(currentPage - 1)">Anterior</button><span>Página @(currentPage + 1) de @((total + InventoryService.PageSize - 1) / InventoryService.PageSize)</span><button type="button" class="btn btn-secondary" disabled="@((currentPage + 1) * InventoryService.PageSize >= total)" @onclick="() => LoadPageAsync(currentPage + 1)">Siguiente</button></nav>
                 }
-            </ul>
-            @if (total > InventoryService.PageSize)
-            {
-                <nav class="inventory-workbench__pagination" aria-label="Páginas de equipos">
-                    <button type="button" class="btn btn-secondary" disabled="@(currentPage == 0)" @onclick="() => LoadPageAsync(currentPage - 1)">Anterior</button>
-                    <span>Página @(currentPage + 1) de @((total + InventoryService.PageSize - 1) / InventoryService.PageSize)</span>
-                    <button type="button" class="btn btn-secondary" disabled="@((currentPage + 1) * InventoryService.PageSize >= total)" @onclick="() => LoadPageAsync(currentPage + 1)">Siguiente</button>
-                </nav>
             }
-        }
-    }
-    else
-    {
-        <div class="inventory-workbench__detail" aria-labelledby="equipment-detail-title">
-            <div class="inventory-workbench__heading">
-                <div><button type="button" class="inventory-workbench__back" @onclick="BackToList">Volver al listado</button>
-                    <h2 id="equipment-detail-title">@details.Input.Code <span>· @details.Input.Name</span></h2>
-                    <p>@CategoryLabel · expediente de prueba</p></div>
-                <button type="button" class="btn btn-primary" @onclick="OpenEditAsync" disabled="@(!interactiveReady || !canWrite)">Editar equipo</button>
-            </div>
-            <nav class="inventory-workbench__detail-tabs" aria-label="Secciones del expediente">
-                @for (var i = 0; i < detailLabels.Length; i++)
-                {
-                    var index = i;
-                    <button type="button" class="@(detailTab == index ? "is-active" : "")" aria-pressed="@(detailTab == index ? "true" : "false")" @onclick="() => detailTab = index">@detailLabels[index]</button>
-                }
-            </nav>
-            <div class="inventory-workbench__detail-content">
-                @if (detailTab == 0)
-                { <dl class="inventory-workbench__facts"><div><dt>Código</dt><dd>@details.Input.Code</dd></div><div><dt>Categoría</dt><dd>@CategoryLabel</dd></div>
-                    <div><dt>Marca</dt><dd>@(details.Input.Brand ?? "No registrada")</dd></div><div><dt>Modelo</dt><dd>@(details.Input.Model ?? "No registrado")</dd></div>
-                    <div><dt>Número de serie</dt><dd>@(details.Input.Serial ?? "No registrado")</dd></div></dl> }
-                else if (detailTab == 1)
-                { <dl class="inventory-workbench__facts"><div><dt>Procesador</dt><dd>@(details.Input.ProcessorName ?? details.Input.ProcessorModel ?? "No registrado")</dd></div>
-                    <div><dt>RAM total</dt><dd>@FormatCapacity(details.Input.TotalRamGb)</dd></div><div><dt>Módulos de RAM</dt><dd>@(details.Input.RamModules.Count == 0 ? "Sin detalle" : string.Join(" + ", details.Input.RamModules.Select(x => FormatCapacity(x.CapacityGb))))</dd></div>
-                    <div><dt>Sistema operativo</dt><dd>@(details.Input.OperatingSystem ?? "No registrado")</dd></div></dl>
-                    <h3>Unidades de almacenamiento</h3>
-                    @if (details.Input.StorageUnits.Count == 0) { <p>No hay unidades registradas.</p> }
-                    else { <ul>@foreach (var unit in details.Input.StorageUnits) { <li>@(unit.Technology ?? "Disco") · @(unit.Interface ?? "interfaz desconocida") · @FormatCapacity(unit.Capacity, unit.Unit)</li> }</ul> }
-                    <p class="technical-preview__note">Los atributos especializados por categoría todavía no están habilitados.</p> }
-                else if (detailTab == 2)
-                { <dl class="inventory-workbench__facts"><div><dt>Sede</dt><dd>@(details.Input.Site ?? "No registrada")</dd></div><div><dt>Ubicación física</dt><dd>@(details.Input.Location ?? "No registrada")</dd></div>
-                    <div><dt>Condición física</dt><dd>@(details.Input.PhysicalCondition ?? "No registrada")</dd></div><div><dt>Condición operativa</dt><dd>@(details.Input.OperationalCondition ?? "No registrada")</dd></div>
-                    <div><dt>Última persona que verificó</dt><dd>@(details.Input.Verifier ?? "Sin verificación")</dd></div></dl>
-                    <p>La custodia y las asignaciones todavía no están habilitadas.</p> }
-                else if (detailTab == 3)
-                { <h3>Historial técnico y observaciones</h3>
-                    @if (details.History.Count == 0) { <p>No hay revisiones ni observaciones registradas.</p> }
-                    else { <ul class="inventory-workbench__history">@foreach (var entry in details.History) { <li>@entry</li> }</ul> } }
-                else { <h3>Evidencias</h3><p>La carga y consulta de fotografías aún no están habilitadas.</p> }
-            </div>
         </div>
-    }
+
+        <button type="button" class="inventory-workbench__detail-backdrop @(details is not null ? "is-visible" : null)" aria-label="Cerrar detalle del equipo" tabindex="-1" @onclick="BackToList"></button>
+        <aside class="inventory-workbench__detail @(details is not null ? "is-open" : null)" aria-label="Detalle del equipo" aria-labelledby="equipment-detail-title" tabindex="-1" @ref="detailPanel">
+            @if (details is null)
+            {
+                <div class="inventory-workbench__detail-empty"><span><AppIcon Name="inventory" /></span><h3>Seleccione un equipo</h3><p>El expediente aparecerá aquí sin ocultar el listado.</p></div>
+            }
+            else
+            {
+                <header class="inventory-workbench__detail-header"><h2>Detalle del equipo</h2><button type="button" class="inventory-workbench__detail-close" aria-label="Cerrar detalle" @onclick="BackToList"><AppIcon Name="close" /></button></header>
+                @if (PhotoAvailable(details.PhotoUrl)) { <img class="inventory-workbench__detail-photo" src="@details.PhotoUrl" alt="Fotografía de @details.Input.Name" @onerror="() => MarkPhotoUnavailable(details.PhotoUrl)" /> }
+                else { <div class="inventory-workbench__detail-photo inventory-workbench__detail-photo--empty inventory-workbench__thumbnail--@selectedCategory" role="img" aria-label="Sin fotografía disponible"><AppIcon Name="@CategoryIcon(selectedCategory)" /><span>Sin fotografía registrada</span></div> }
+                <div class="inventory-workbench__detail-identity">
+                    <div><h3 id="equipment-detail-title">@details.Input.Name</h3><p><strong>Código:</strong> @details.Input.Code</p><small>@(details.Input.Model ?? details.Input.Brand ?? "Marca y modelo no registrados")</small></div>
+                    @PrimaryConditionBadge(details.Input.PhysicalCondition, details.Input.OperationalCondition)
+                </div>
+                <dl class="inventory-workbench__summary-facts">
+                    <div><dt>Categoría</dt><dd>@CategoryLabel</dd></div><div><dt>Marca</dt><dd>@(details.Input.Brand ?? "No registrada")</dd></div><div><dt>Modelo</dt><dd>@(details.Input.Model ?? "No registrado")</dd></div><div><dt>Número de serie</dt><dd>@(details.Input.Serial ?? "No registrado")</dd></div><div><dt>Ubicación actual</dt><dd>@(details.Input.Location ?? details.Input.Site ?? "No registrada")</dd></div><div><dt>Responsable</dt><dd>No disponible</dd></div>
+                </dl>
+                <p class="inventory-workbench__honest-note">Responsables y asignaciones aún no están habilitados.</p>
+                <div class="inventory-workbench__detail-action"><button type="button" class="btn btn-primary" title="@WriteRestriction" @onclick="OpenEditAsync" disabled="@(!interactiveReady || !canWrite)"><AppIcon Name="folder" /> Editar expediente</button></div>
+                <nav class="inventory-workbench__detail-tabs" aria-label="Secciones del expediente">@for (var i = 0; i < detailLabels.Length; i++) { var index = i; <button type="button" class="@(detailTab == index ? "is-active" : "")" aria-pressed="@(detailTab == index ? "true" : "false")" @onclick="() => detailTab = index">@DetailShortLabel(index)</button> }</nav>
+                <div class="inventory-workbench__detail-content">
+                    @if (detailTab == 0) { <h3>Información general</h3><div class="inventory-workbench__condition-summary"><div><span>Condición física</span>@ConditionBadge(null, details.Input.PhysicalCondition)</div><div><span>Condición operativa</span>@ConditionBadge(null, details.Input.OperationalCondition)</div></div> }
+                    else if (detailTab == 1) { <h3>Características técnicas</h3><dl class="inventory-workbench__facts"><div><dt>Procesador</dt><dd>@(details.Input.ProcessorName ?? details.Input.ProcessorModel ?? "No registrado")</dd></div><div><dt>RAM total</dt><dd>@FormatCapacity(details.Input.TotalRamGb)</dd></div><div><dt>Módulos de RAM</dt><dd>@(details.Input.RamModules.Count == 0 ? "Sin detalle" : string.Join(" + ", details.Input.RamModules.Select(x => FormatCapacity(x.CapacityGb))))</dd></div><div><dt>Sistema operativo</dt><dd>@(details.Input.OperatingSystem ?? "No registrado")</dd></div></dl> }
+                    else if (detailTab == 2) { <h3>Condición y ubicación</h3><dl class="inventory-workbench__facts"><div><dt>Sede</dt><dd>@(details.Input.Site ?? "No registrada")</dd></div><div><dt>Ubicación física</dt><dd>@(details.Input.Location ?? "No registrada")</dd></div><div><dt>Última persona que verificó</dt><dd>@(details.Input.Verifier ?? "Sin verificación")</dd></div></dl> }
+                    else if (detailTab == 3) { <h3>Historial técnico</h3>@if (details.History.Count == 0) { <p>No hay revisiones ni observaciones registradas.</p> } else { <ul class="inventory-workbench__history">@foreach (var entry in details.History) { <li>@entry</li> }</ul> } }
+                    else { <EquipmentPhotos @key="details.Id" EquipmentId="details.Id" Changed="PhotosChangedAsync" /> }
+                </div>
+            }
+        </aside>
+    </div>
 
     <dialog @ref="formDialog" class="technical-preview @(quick ? "technical-preview--quick" : "")" aria-labelledby="technical-preview-title" aria-describedby="form-summary">
     <form @onsubmit="() => SaveAsync(true)" @onsubmit:preventDefault @oninput="MarkDirty" @onchange="MarkDirty">
@@ -468,8 +485,7 @@
                     </div>
                     <div class="field technical-preview__wide"><label for="original-notes">Observaciones originales del Excel <span class="technical-preview__optional">vista previa</span></label>
                         <textarea id="original-notes" rows="3" disabled></textarea><small>Solo se incorporarán cuando se importe el Excel.</small></div>
-                    <div class="technical-preview__media"><div><h3>Fotografías e historial</h3><p>Se habilitarán cuando exista un flujo de evidencias autorizado.</p></div>
-                        <StatusBadge Tone="neutral">Fotos no habilitadas</StatusBadge></div>
+                    <div class="technical-preview__media"><div><h3>Fotografías e historial</h3><p>Guarde el equipo y abra Evidencias en su expediente para consultar la galería. La subida requiere habilitación de fotografías y permisos.</p></div></div>
                 </details>
                 }
             </div>
@@ -500,6 +516,8 @@
     private static readonly string[] tabLabels = ["Identificación", "Características técnicas", "Control y observaciones"];
     private static readonly string[] detailLabels = ["Información general", "Características técnicas", "Condición y ubicación", "Historial técnico", "Evidencias"];
     private ElementReference formDialog;
+    private ElementReference listPanel;
+    private ElementReference detailPanel;
     private bool canWrite;
     private bool interactiveReady;
     private IJSObjectReference? uiModule;
@@ -508,6 +526,8 @@
     private bool focusErrorRequested;
     private bool focusCodeRequested;
     private int? focusTabRequested;
+    private bool detailOpenRequested;
+    private bool detailCloseRequested;
     private bool quick;
     private bool dirty;
     private int activeTab;
@@ -526,6 +546,7 @@
     private bool saving;
     private string? error;
     private string? success;
+    private readonly HashSet<string> failedPhotos = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -540,6 +561,8 @@
         if (firstRender)
         {
             interactiveReady = true;
+            uiModule = await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Inventory/TechnicalFormPreview.razor.js");
+            await uiModule.InvokeVoidAsync("bindInventoryKeys", listPanel);
             await InvokeAsync(StateHasChanged);
         }
         if (openRequested)
@@ -563,6 +586,18 @@
         {
             focusTabRequested = null;
             await uiModule.InvokeVoidAsync("focusTab", tab);
+        }
+        if (detailOpenRequested)
+        {
+            uiModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Inventory/TechnicalFormPreview.razor.js");
+            dotNetRef ??= DotNetObjectReference.Create(this);
+            await uiModule.InvokeVoidAsync("openDetail", detailPanel, listPanel, dotNetRef);
+            detailOpenRequested = false;
+        }
+        if (detailCloseRequested && uiModule is not null)
+        {
+            await uiModule.InvokeVoidAsync("closeDetail", detailPanel, listPanel);
+            detailCloseRequested = false;
         }
     }
 
@@ -628,6 +663,15 @@
         await InvokeAsync(StateHasChanged);
     }
 
+    private async Task PhotosChangedAsync()
+    {
+        if (details is null) return;
+        var id = details.Id;
+        failedPhotos.Clear();
+        await RefreshAsync();
+        details = await Inventory.GetAsync(id);
+    }
+
     private void MarkDirty() => dirty = true;
 
     private void SetTab(int index)
@@ -684,10 +728,105 @@
         details = null;
         editingId = null;
         detailTab = 0;
+        detailCloseRequested = true;
+    }
+
+    [JSInvokable]
+    public async Task OnDetailCancelAsync()
+    {
+        BackToList();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleRowKeyDownAsync(KeyboardEventArgs eventArgs, Guid id)
+    {
+        if (eventArgs.Key is "Enter" or " ") await OpenAsync(id);
+    }
+
+    private bool PhotoAvailable(string? photoUrl) => !string.IsNullOrWhiteSpace(photoUrl) && !failedPhotos.Contains(photoUrl);
+
+    private void MarkPhotoUnavailable(string? photoUrl)
+    {
+        if (!string.IsNullOrWhiteSpace(photoUrl)) failedPhotos.Add(photoUrl);
     }
 
     private static string FormatCapacity(decimal? value, string? unit = "GB") => value is null
         ? "No registrada" : $"{value.Value.ToString("0.###", CultureInfo.GetCultureInfo("es-BO"))} {unit ?? "GB"}";
+
+    private string WriteRestriction => interactiveReady && !canWrite
+        ? "No disponible para este perfil o entorno."
+        : "";
+
+    private static string ModelLine(EquipmentRow row) => (row.Brand, row.Model) switch
+    {
+        ({ } brand, { } model) => $"{brand} · {model}",
+        ({ } brand, null) => brand,
+        (null, { } model) => model,
+        _ => "Marca y modelo no registrados"
+    };
+
+    private static string CategoryKey(string category) => category switch
+    {
+        "Computadora de escritorio" => "desktop",
+        "Laptop" => "laptop",
+        "Monitor" => "monitor",
+        "Cámara" => "camera",
+        "Disco externo" => "external-disk",
+        "Periférico" => "peripheral",
+        "Equipo de grabación" => "recording",
+        _ => "other"
+    };
+
+    private static string CategoryIcon(string category) => category switch
+    {
+        "desktop" => "desktop",
+        "laptop" => "laptop",
+        "monitor" => "monitor",
+        "camera" => "camera",
+        "external-disk" => "disk",
+        "peripheral" => "peripheral",
+        "recording" => "recording",
+        _ => "device"
+    };
+
+    private static string DetailShortLabel(int index) => index switch
+    {
+        0 => "General",
+        1 => "Técnica",
+        2 => "Control",
+        3 => "Historial",
+        _ => "Evidencias"
+    };
+
+    private static RenderFragment ConditionBadge(string? label, string? condition) => builder =>
+    {
+        var value = string.IsNullOrWhiteSpace(condition) ? "No registrada" : condition.Trim();
+        builder.OpenElement(0, "span");
+        builder.AddAttribute(1, "class", $"inventory-workbench__condition inventory-workbench__condition--{ConditionTone(value)}");
+        builder.AddAttribute(2, "title", value);
+        if (!string.IsNullOrWhiteSpace(label))
+        {
+            builder.OpenElement(3, "small");
+            builder.AddContent(4, label);
+            builder.CloseElement();
+        }
+        builder.AddContent(5, value);
+        builder.CloseElement();
+    };
+
+    private static RenderFragment PrimaryConditionBadge(string? physical, string? operational) =>
+        ConditionBadge(null, operational ?? physical);
+
+    private static string ConditionTone(string value)
+    {
+        var normalized = value.Trim().ToLowerInvariant();
+        if (normalized is "malo" or "mala" or "en mal estado" or "dañado" or "dañada" or "inoperativo" or "inoperativa" or
+            "no operativo" or "no operativa" or "no funciona" or "defectuoso" or "defectuosa" or "crítico" or "crítica") return "danger";
+        if (normalized is "regular" or "con desgaste" or "requiere revisión" or "pendiente" or "reparable") return "warning";
+        if (normalized is "bueno" or "buena" or "buen estado" or "en buen estado" or "operativo" or "operativa" or "funcional" or
+            "excelente" or "nuevo" or "nueva") return "positive";
+        return "neutral";
+    }
 
     public async ValueTask DisposeAsync()
     {
@@ -697,6 +836,8 @@
         if (uiModule is not null)
         {
             try { await uiModule.InvokeVoidAsync("closeForm", formDialog); } catch (JSDisconnectedException) { }
+            try { await uiModule.InvokeVoidAsync("closeDetail", detailPanel, listPanel); } catch (JSDisconnectedException) { }
+            try { await uiModule.InvokeVoidAsync("disposeInventoryLayout", listPanel); } catch (JSDisconnectedException) { }
             try { await uiModule.DisposeAsync(); } catch (JSDisconnectedException) { }
         }
     }
@@ -721,6 +862,7 @@
         {
             details = await Inventory.GetAsync(id);
             if (details is null) { error = "No se encontró el expediente."; return; }
+            detailOpenRequested = true;
             editingId = id;
             detailTab = 0;
             var input = details.Input;
@@ -865,14 +1007,14 @@
     private string selectedCategory = "";
     private string CategoryLabel => selectedCategory switch
     {
-        "desktop" => "computadora de escritorio",
-        "laptop" => "laptop",
-        "monitor" => "monitor",
-        "camera" => "cámara",
-        "external-disk" => "disco externo",
-        "peripheral" => "periférico",
-        "recording" => "equipo de grabación",
-        _ => "otro dispositivo"
+        "desktop" => "Computadora de escritorio",
+        "laptop" => "Laptop",
+        "monitor" => "Monitor",
+        "camera" => "Cámara",
+        "external-disk" => "Disco externo",
+        "peripheral" => "Periférico",
+        "recording" => "Equipo de grabación",
+        _ => "Otro dispositivo"
     };
     private string? assetCode;
     private string? assetName;
