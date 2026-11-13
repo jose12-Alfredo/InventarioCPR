@@ -9,10 +9,11 @@ using InventarioCPR.Application.Security;
 
 namespace InventarioCPR.Application.Inventory;
 
-public sealed record EquipmentDetails(Guid Id, EquipmentInput Input, IReadOnlyList<string> History, string? PhotoUrl);
+public sealed record EquipmentDetails(Guid Id, EquipmentInput Input, IReadOnlyList<string> History, string? PhotoUrl,
+    bool IsDraft = false, int RegistrationRevision = 0, bool RequiresPhoto = false);
 
-public sealed class InventoryService(IDbContextFactory<InventoryDbContext> contexts, IConfiguration configuration,
-    IInventoryAccess access)
+public sealed partial class InventoryService(IDbContextFactory<InventoryDbContext> contexts, IConfiguration configuration,
+    IInventoryAccess access, IPhotoStorage? photoStorage = null)
 {
     public const int PageSize = 25;
     public bool CanWrite => configuration["NeonDevelopmentApp:BranchConfirmed"] == "test-migracion-inicial" ||
@@ -32,10 +33,10 @@ public sealed class InventoryService(IDbContextFactory<InventoryDbContext> conte
     {
         await access.EnsureReadAsync();
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
-        var physical = await db.Equipment.AsNoTracking().Select(x => x.Inspections
+        var physical = await db.Equipment.AsNoTracking().Where(x => x.RegistrationState == EquipmentRegistrationState.Definitive).Select(x => x.Inspections
             .OrderByDescending(i => i.InspectedAtUtc).Select(i => i.PhysicalCondition).FirstOrDefault())
             .Distinct().ToListAsync(cancellationToken);
-        var operational = await db.Equipment.AsNoTracking().Select(x => x.Inspections
+        var operational = await db.Equipment.AsNoTracking().Where(x => x.RegistrationState == EquipmentRegistrationState.Definitive).Select(x => x.Inspections
             .OrderByDescending(i => i.InspectedAtUtc).Select(i => i.OperationalCondition).FirstOrDefault())
             .Distinct().ToListAsync(cancellationToken);
         return physical.Where(x => !string.IsNullOrWhiteSpace(x)).OrderBy(x => x)
@@ -48,11 +49,12 @@ public sealed class InventoryService(IDbContextFactory<InventoryDbContext> conte
     public async Task<EquipmentPage> ListAsync(
         string? search = null, string? category = null, string? condition = null,
         int page = 0,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, bool draftsOnly = false)
     {
         await access.EnsureReadAsync();
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
-        var equipment = db.Equipment.AsNoTracking().AsQueryable();
+        var equipment = db.Equipment.AsNoTracking().Where(x => x.RegistrationState ==
+            (draftsOnly ? EquipmentRegistrationState.Draft : EquipmentRegistrationState.Definitive));
         if (!string.IsNullOrWhiteSpace(search))
         {
             var term = search.Trim().ToLower();
@@ -100,7 +102,8 @@ public sealed class InventoryService(IDbContextFactory<InventoryDbContext> conte
                     .Select(p => (Guid?)p.PhotoId).FirstOrDefault() : null
             })
             .ToListAsync(cancellationToken);
-        var rows = rowData.Select(x => new EquipmentRow(x.Id, x.Code, x.Name, x.Category, x.Brand, x.Model,
+        var rows = rowData.Select(x => new EquipmentRow(x.Id,
+            draftsOnly && x.Code == $"~BORRADOR-{x.Id:N}" ? "Código pendiente" : x.Code, x.Name, x.Category, x.Brand, x.Model,
             x.PhysicalCondition, x.OperationalCondition, x.PhotoId is Guid photo ? PhotoRules.ContentUrl(x.Id, photo, true) : null)).ToList();
         return new EquipmentPage(rows, total);
     }
@@ -116,6 +119,8 @@ public sealed class InventoryService(IDbContextFactory<InventoryDbContext> conte
             .Include(x => x.Observations).Include(x => x.Inspections)
             .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (equipment is null) return null;
+        if (equipment.RegistrationState == EquipmentRegistrationState.Draft)
+            return new EquipmentDetails(id, ReadDraft(equipment), [], null, true, equipment.RegistrationRevision, true);
         var latest = equipment.TechnicalConfigurations.SingleOrDefault(x => x.EffectiveToUtc is null);
         var inspection = equipment.Inspections.OrderByDescending(x => x.InspectedAtUtc).FirstOrDefault();
         var location = await db.LocationObservations.AsNoTracking().Include(x => x.Location).ThenInclude(x => x.Site)
@@ -147,11 +152,13 @@ public sealed class InventoryService(IDbContextFactory<InventoryDbContext> conte
             ProcessorModel = latest?.ProcessorModel,
             ProcessorName = latest?.ProcessorDesignation,
             TotalRamGb = latest?.TotalRamGb,
+            RamModulesComplete = latest?.RamModulesComplete ?? false,
+            ExpectedTechnicalRevision = latest?.Revision ?? 0,
             OperatingSystem = latest?.OperatingSystem,
             RamModules = latest?.RamModules.OrderBy(x => x.Slot)
-                .Select(x => new RamInput { CapacityGb = x.CapacityGb }).ToList() ?? [],
+                .Select(x => new RamInput { OriginalId = x.Id, CapacityGb = x.CapacityGb }).ToList() ?? [],
             StorageUnits = latest?.StorageUnits.OrderBy(x => x.Position)
-                .Select(x => new StorageInput { Technology = x.Technology, Interface = x.Interface,
+                .Select(x => new StorageInput { OriginalId = x.Id, Technology = x.Technology, Interface = x.Interface,
                     Capacity = x.Capacity, Unit = x.CapacityUnit }).ToList() ?? [],
             Site = location?.Location.Site.Name, Location = location?.Location.Name,
             PhysicalCondition = inspection?.PhysicalCondition, OperationalCondition = inspection?.OperationalCondition,
@@ -171,10 +178,23 @@ public sealed class InventoryService(IDbContextFactory<InventoryDbContext> conte
             .Select(x => $"Nota ({x.Source}, {x.RecordedAtUtc:yyyy-MM-dd HH:mm} UTC): {x.Text}"));
         if (verification is not null)
             history.Add($"Última verificación: {verification.VerifiedAtUtc:yyyy-MM-dd HH:mm} UTC · {verification.Verifier.Name}");
-        return new EquipmentDetails(id, input, history, photoId is Guid photo ? PhotoRules.ContentUrl(id, photo) : null);
+        return new EquipmentDetails(id, input, history, photoId is Guid photo ? PhotoRules.ContentUrl(id, photo) : null,
+            false, equipment.RegistrationRevision, equipment.RequiresRegistrationPhoto);
     }
 
     public async Task<Guid> SaveAsync(EquipmentInput input, Guid? id = null, CancellationToken cancellationToken = default)
+    {
+        if (id is null) return await SaveDraftAsync(input, Guid.NewGuid(), 0, cancellationToken);
+        await access.EnsureWriteAsync();
+        await using var check = await contexts.CreateDbContextAsync(cancellationToken);
+        var existing = await check.Equipment.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, cancellationToken)
+            ?? throw new InventoryValidationException("El equipo ya no existe.");
+        if (existing.RegistrationState == EquipmentRegistrationState.Draft)
+            throw new InventoryValidationException("Guarde el borrador con su revisión vigente y utilice Finalizar registro.");
+        return await SaveDefinitiveAsync(input, id.Value, false, null, cancellationToken);
+    }
+
+    private async Task<Guid> SaveDefinitiveAsync(EquipmentInput input, Guid id, bool finalize, int? draftRevision, CancellationToken cancellationToken)
     {
         Validate(input);
         if (!CanWrite)
@@ -185,19 +205,6 @@ public sealed class InventoryService(IDbContextFactory<InventoryDbContext> conte
         try
         {
             Equipment equipment;
-            if (id is null)
-            {
-                var categoryName = Categories[input.Category];
-                var category = await db.Categories.FirstOrDefaultAsync(x => x.Name == categoryName, cancellationToken);
-                if (category is null)
-                {
-                    category = new EquipmentCategory { Id = Guid.NewGuid(), Name = categoryName };
-                    db.Categories.Add(category);
-                }
-                equipment = new Equipment { Id = Guid.NewGuid(), Category = category };
-                db.Equipment.Add(equipment);
-            }
-            else
             {
                 // Serialize edits to the same expediente before reading its current revision.
                 await using (var lockCommand = db.Database.GetDbConnection().CreateCommand())
@@ -206,17 +213,28 @@ public sealed class InventoryService(IDbContextFactory<InventoryDbContext> conte
                     lockCommand.CommandText = "SELECT 1 FROM equipment WHERE \"Id\" = @id FOR UPDATE";
                     var parameter = lockCommand.CreateParameter();
                     parameter.ParameterName = "id";
-                    parameter.Value = id.Value;
+                    parameter.Value = id;
                     lockCommand.Parameters.Add(parameter);
                     await lockCommand.ExecuteScalarAsync(cancellationToken);
                 }
                 equipment = await db.Equipment.Include(x => x.Category)
                     .Include(x => x.TechnicalConfigurations).ThenInclude(x => x.RamModules)
                     .Include(x => x.TechnicalConfigurations).ThenInclude(x => x.StorageUnits)
-                    .FirstOrDefaultAsync(x => x.Id == id.Value, cancellationToken)
+                    .Include(x => x.TechnicalConfigurations).ThenInclude(x => x.AttributeValues)
+                    .FirstOrDefaultAsync(x => x.Id == id, cancellationToken)
                     ?? throw new InventoryValidationException("El equipo ya no existe.");
+                if (finalize && equipment.RegistrationState == EquipmentRegistrationState.Definitive) return equipment.Id;
+                if (equipment.RegistrationState == EquipmentRegistrationState.Draft && !finalize)
+                    throw new InventoryValidationException("Utilice Finalizar registro para este borrador.");
+                if (finalize && equipment.RegistrationRevision != draftRevision)
+                    throw new InventoryValidationException("El borrador cambió en otra sesión. Vuelva a abrirlo antes de finalizar.");
                 if (equipment.Category.Name != Categories[input.Category])
-                    throw new InventoryValidationException("No cambie la categoría de un expediente existente.");
+                {
+                    if (!finalize) throw new InventoryValidationException("No cambie la categoría de un expediente existente.");
+                    equipment.Category = await RegistrationCategoryAsync(db, input.Category, cancellationToken);
+                }
+                if (equipment.RequiresRegistrationPhoto)
+                    await ConfirmRegistrationPhotoAsync(db, equipment.Id, cancellationToken);
             }
 
             equipment.Code = input.Code.Trim();
@@ -260,7 +278,12 @@ public sealed class InventoryService(IDbContextFactory<InventoryDbContext> conte
 
             var now = DateTimeOffset.UtcNow;
             var current = equipment.TechnicalConfigurations.SingleOrDefault(x => x.EffectiveToUtc is null);
-            if (HasTechnicalChange(current, input))
+            if (input.UpdateTechnicalData && input.ExpectedTechnicalRevision is { } expected &&
+                expected != (current?.Revision ?? 0))
+                throw new InventoryValidationException("La ficha técnica cambió mientras editaba. Vuelva a abrir el expediente antes de guardar.");
+            var mappedRam = input.UpdateTechnicalData ? MapRam(input.RamModules, current) : [];
+            var mappedStorage = input.UpdateTechnicalData ? MapStorage(input.StorageUnits, current) : [];
+            if (input.UpdateTechnicalData && HasTechnicalChange(current, input, mappedRam, mappedStorage))
             {
                 if (current is not null)
                 {
@@ -278,15 +301,15 @@ public sealed class InventoryService(IDbContextFactory<InventoryDbContext> conte
                     ProcessorModel = Clean(input.ProcessorModel),
                     ProcessorDesignation = Clean(input.ProcessorName),
                     TotalRamGb = input.TotalRamGb,
+                    RamModulesComplete = input.RamModulesComplete ?? current?.RamModulesComplete ?? false,
                     OperatingSystem = Clean(input.OperatingSystem),
-                    RamModules = input.RamModules.Select((x, index) => new RamModule
-                        { Id = Guid.NewGuid(), Slot = index + 1, CapacityGb = x.CapacityGb!.Value }).ToList(),
-                    StorageUnits = input.StorageUnits.Select((x, index) => new StorageUnit
+                    RamModules = mappedRam,
+                    StorageUnits = mappedStorage,
+                    AttributeValues = current?.AttributeValues.Select(x => new TechnicalAttributeValue
                     {
-                        Id = Guid.NewGuid(), Position = index + 1, Capacity = x.Capacity,
-                        CapacityUnit = x.Capacity is null ? null : x.Unit,
-                        Technology = Clean(x.Technology), Interface = Clean(x.Interface)
-                    }).ToList()
+                        Id = Guid.NewGuid(), CategoryId = x.CategoryId, DefinitionId = x.DefinitionId,
+                        TextValue = x.TextValue, NumberValue = x.NumberValue, BooleanValue = x.BooleanValue
+                    }).ToList() ?? []
                 };
                 db.TechnicalConfigurations.Add(revision);
             }
@@ -310,7 +333,7 @@ public sealed class InventoryService(IDbContextFactory<InventoryDbContext> conte
                         { Id = Guid.NewGuid(), Equipment = equipment, Location = location, ObservedAtUtc = now });
                 }
             }
-            else if (id is not null && await db.LocationObservations.AnyAsync(x => x.EquipmentId == equipment.Id, cancellationToken))
+            else if (await db.LocationObservations.AnyAsync(x => x.EquipmentId == equipment.Id, cancellationToken))
                 throw new InventoryValidationException("Una ubicación constatada no puede borrarse sin un movimiento o corrección histórica.");
 
             if (Clean(input.PhysicalCondition) is not null || Clean(input.OperationalCondition) is not null)
@@ -329,7 +352,7 @@ public sealed class InventoryService(IDbContextFactory<InventoryDbContext> conte
                         OperationalCondition = Clean(input.OperationalCondition) });
                 }
             }
-            else if (id is not null && await db.Inspections.AnyAsync(x => x.EquipmentId == equipment.Id, cancellationToken))
+            else if (await db.Inspections.AnyAsync(x => x.EquipmentId == equipment.Id, cancellationToken))
                 throw new InventoryValidationException("Una condición constatada no puede borrarse sin una nueva inspección.");
 
             if (input.VerifyNow)
@@ -358,6 +381,14 @@ public sealed class InventoryService(IDbContextFactory<InventoryDbContext> conte
                 db.DataMarkers.Add(new EquipmentDataMarker { Id = Guid.NewGuid(), Equipment = equipment,
                     FieldKey = field, Availability = DataAvailability.NotApplicable });
 
+            if (finalize)
+            {
+                equipment.RegistrationState = EquipmentRegistrationState.Definitive;
+                equipment.DraftPayload = null;
+                equipment.FinalizedAtUtc = now;
+                equipment.RegistrationRevision++;
+                equipment.RegistrationUpdatedAtUtc = now;
+            }
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return equipment.Id;
@@ -382,7 +413,49 @@ public sealed class InventoryService(IDbContextFactory<InventoryDbContext> conte
 
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
-    private static bool HasTechnicalChange(TechnicalConfiguration? old, EquipmentInput input)
+    private static List<RamModule> MapRam(IReadOnlyList<RamInput> input, TechnicalConfiguration? old)
+    {
+        var sources = old?.RamModules.ToDictionary(x => x.Id) ?? [];
+        var used = input.Where(x => x.OriginalId.HasValue).Select(x => x.OriginalId!.Value).ToList();
+        if (used.Distinct().Count() != used.Count || used.Any(id => !sources.ContainsKey(id)))
+            throw new InventoryValidationException("Los módulos de RAM cambiaron. Vuelva a abrir la ficha técnica.");
+        var occupied = used.Select(id => sources[id].Slot).Where(x => x.HasValue).Select(x => x!.Value).ToHashSet();
+        return input.Select(x =>
+        {
+            var source = x.OriginalId is { } id ? sources[id] : null;
+            int? slot = source is not null ? source.Slot : NextPosition(occupied);
+            return new RamModule { Id = Guid.NewGuid(), Slot = slot, CapacityGb = x.CapacityGb!.Value,
+                Technology = source?.Technology, SerialNumber = source?.SerialNumber };
+        }).ToList();
+    }
+
+    private static List<StorageUnit> MapStorage(IReadOnlyList<StorageInput> input, TechnicalConfiguration? old)
+    {
+        var sources = old?.StorageUnits.ToDictionary(x => x.Id) ?? [];
+        var used = input.Where(x => x.OriginalId.HasValue).Select(x => x.OriginalId!.Value).ToList();
+        if (used.Distinct().Count() != used.Count || used.Any(id => !sources.ContainsKey(id)))
+            throw new InventoryValidationException("Los discos cambiaron. Vuelva a abrir la ficha técnica.");
+        var occupied = used.Select(id => sources[id].Position).Where(x => x.HasValue).Select(x => x!.Value).ToHashSet();
+        return input.Select(x =>
+        {
+            var source = x.OriginalId is { } id ? sources[id] : null;
+            int? position = source is not null ? source.Position : NextPosition(occupied);
+            return new StorageUnit { Id = Guid.NewGuid(), Position = position, Capacity = x.Capacity,
+                CapacityUnit = x.Capacity is null ? null : x.Unit, Technology = Clean(x.Technology),
+                Interface = Clean(x.Interface), SerialNumber = source?.SerialNumber };
+        }).ToList();
+    }
+
+    private static int NextPosition(HashSet<int> occupied)
+    {
+        var next = 1;
+        while (occupied.Contains(next)) next++;
+        occupied.Add(next);
+        return next;
+    }
+
+    private static bool HasTechnicalChange(TechnicalConfiguration? old, EquipmentInput input,
+        IReadOnlyList<RamModule> ram, IReadOnlyList<StorageUnit> storage)
     {
         if (old is null)
             return Clean(input.ProcessorManufacturer) is not null || Clean(input.ProcessorModel) is not null ||
@@ -390,12 +463,12 @@ public sealed class InventoryService(IDbContextFactory<InventoryDbContext> conte
                 Clean(input.OperatingSystem) is not null || input.RamModules.Count > 0 || input.StorageUnits.Count > 0;
         return old.ProcessorManufacturer != Clean(input.ProcessorManufacturer) ||
             old.ProcessorModel != Clean(input.ProcessorModel) || old.ProcessorDesignation != Clean(input.ProcessorName) ||
-            old.TotalRamGb != input.TotalRamGb || old.OperatingSystem != Clean(input.OperatingSystem) ||
-            !old.RamModules.OrderBy(x => x.Slot).Select(x => x.CapacityGb)
-                .SequenceEqual(input.RamModules.Select(x => x.CapacityGb!.Value)) ||
-            !old.StorageUnits.OrderBy(x => x.Position).Select(x => (x.Technology, x.Interface, x.Capacity, x.CapacityUnit))
-                .SequenceEqual(input.StorageUnits.Select(x => (Clean(x.Technology), Clean(x.Interface), x.Capacity,
-                    x.Capacity is null ? null : x.Unit)));
+             old.TotalRamGb != input.TotalRamGb || old.OperatingSystem != Clean(input.OperatingSystem) ||
+            old.RamModulesComplete != (input.RamModulesComplete ?? old.RamModulesComplete) ||
+            !old.RamModules.OrderBy(x => x.Slot).Select(x => (x.CapacityGb, x.Slot, x.Technology, x.SerialNumber))
+                .SequenceEqual(ram.OrderBy(x => x.Slot).Select(x => (x.CapacityGb, x.Slot, x.Technology, x.SerialNumber))) ||
+            !old.StorageUnits.OrderBy(x => x.Position).Select(x => (x.Technology, x.Interface, x.Capacity, x.CapacityUnit, x.Position, x.SerialNumber))
+                .SequenceEqual(storage.OrderBy(x => x.Position).Select(x => (x.Technology, x.Interface, x.Capacity, x.CapacityUnit, x.Position, x.SerialNumber)));
     }
 
     private static void Validate(EquipmentInput x)
@@ -447,6 +520,8 @@ public sealed class InventoryService(IDbContextFactory<InventoryDbContext> conte
             x.StorageUnits.Any(d => d.Capacity is <= 0 or > 100000 ||
                 (d.Capacity is not null && d.Unit is not ("GB" or "TB"))))
             throw new InventoryValidationException("Revise capacidades de RAM y almacenamiento; deben ser positivas y tener unidad válida.");
+        if (x.UpdateTechnicalData && x.RamModulesComplete == true && x.RamModules.Count > 0 && x.TotalRamGb != x.RamModules.Sum(m => m.CapacityGb))
+            throw new InventoryValidationException("La RAM total debe coincidir con la suma de los módulos completos.");
         foreach (var disk in x.StorageUnits)
         {
             Length(disk.Technology, 80, "Tipo de disco"); Length(disk.Interface, 80, "Interfaz");

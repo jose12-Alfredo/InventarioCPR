@@ -19,11 +19,9 @@ RUN test -s /app/publish/wwwroot/_framework/blazor.web.js
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 
-RUN mkdir -p /var/data/keys && chown -R "$APP_UID:$APP_UID" /var/data
 USER $APP_UID
 
 ENV ASPNETCORE_ENVIRONMENT=Production \
-    DataProtection__KeysPath=/var/data/keys \
     DOTNET_EnableDiagnostics=0
 EXPOSE 10000
 

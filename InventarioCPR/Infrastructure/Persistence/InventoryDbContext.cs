@@ -19,6 +19,13 @@ public sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> opti
 
     private void ProtectPhotoHistory()
     {
+        foreach (var entry in ChangeTracker.Entries<Equipment>().Where(x => x.State == EntityState.Modified))
+        {
+            if (entry.Property(x => x.RequiresRegistrationPhoto).IsModified ||
+                (entry.Property(x => x.RegistrationState).OriginalValue == EquipmentRegistrationState.Definitive &&
+                 entry.Entity.RegistrationState != EquipmentRegistrationState.Definitive))
+                throw new InvalidOperationException("No se permite retirar la exigencia de fotografía ni devolver un registro definitivo a borrador.");
+        }
         foreach (var entry in ChangeTracker.Entries<PhotoEvidence>())
             if (entry.State is EntityState.Modified or EntityState.Deleted)
                 throw new InvalidOperationException("Las evidencias históricas no se modifican ni se eliminan.");
@@ -134,11 +141,17 @@ public sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> opti
                 t.HasCheckConstraint("CK_equipment_name", "length(btrim(\"Name\")) > 0");
                 t.HasCheckConstraint("CK_equipment_model_brand", "\"CommercialModelId\" IS NULL OR \"BrandId\" IS NOT NULL");
                 t.HasCheckConstraint("CK_equipment_serial", "(\"SerialAvailability\" = 'Recorded' AND nullif(btrim(\"SerialNumber\"), '') IS NOT NULL) OR (\"SerialAvailability\" IN ('NotRecorded', 'NotApplicable') AND \"SerialNumber\" IS NULL) OR \"SerialAvailability\" = 'PendingVerification'");
+                t.HasCheckConstraint("CK_equipment_registration", "\"RegistrationState\" IN ('Draft','Definitive') AND \"RegistrationRevision\" >= 0 AND (\"RegistrationState\" <> 'Definitive' OR (\"DraftPayload\" IS NULL AND (NOT \"RequiresRegistrationPhoto\" OR \"FinalizedAtUtc\" IS NOT NULL)))");
+                t.HasCheckConstraint("CK_equipment_draft_size", "\"DraftPayload\" IS NULL OR length(\"DraftPayload\") <= 65536");
             });
             e.HasKey(x => x.Id);
             e.Property(x => x.Code).HasMaxLength(80).IsRequired();
             e.Property(x => x.CodeNormalized).HasMaxLength(80).HasComputedColumnSql("upper(btrim(\"Code\"))", stored: true);
             e.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            e.Property(x => x.RegistrationState).HasConversion<string>().HasMaxLength(20).HasDefaultValue(EquipmentRegistrationState.Draft);
+            e.Property(x => x.RequiresRegistrationPhoto).HasDefaultValue(true);
+            e.Property(x => x.DraftPayload).HasColumnType("text");
+            e.HasIndex(x => new { x.RegistrationState, x.CodeNormalized });
             e.Property(x => x.SerialNumber).HasMaxLength(160);
             e.Property(x => x.SerialAvailability).HasConversion<string>().HasMaxLength(30).HasDefaultValue(DataAvailability.NotRecorded);
             e.HasIndex(x => x.CodeNormalized).IsUnique();

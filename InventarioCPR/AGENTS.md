@@ -14,3 +14,12 @@ Estas reglas son obligatorias para cualquier trabajo que cree o modifique UI/UX,
 - Validar como mínimo 360x800, 390x844, 768x1024, 1024x768, 1440x900 y 1920x1080.
 - Comprobar teclado, foco, controles táctiles, formularios, estados, ausencia de scroll horizontal no previsto y capturas reales.
 - No modificar base de datos ni lógica empresarial solo para satisfacer requisitos visuales.
+
+## Registro de equipos y fotografías
+
+- RN-111/117: las altas nuevas son Borradores hasta tener mínimos válidos y una fotografía principal real confirmada. La autoridad es el servicio del servidor, no el botón de Razor.
+- Reutilizar ID de borrador y reservas de subida en todos los reintentos. Los borradores se consultan aparte y no se incluyen en el conteo/listado normal de definitivos.
+- Conservar equipos anteriores sin foto mediante la excepción legacy de la migración; no inventar evidencias ni fechas. No eliminar fotos ni periodos históricos, ni permitir democión de definitivos o retirada de la exigencia de foto.
+- La migración `20261112200209_EquipmentDraftFinalization` se aplicó con autorización únicamente en `test-migracion-inicial` (`br-flat-smoke-b4kdmosq`). No repetirla en otra rama sin autorización. Las pruebas automatizadas ordinarias siguen usando bases aleatorias loopback; la validación remota controlada autorizada está en `MANDATORY_PHOTO_REAL_VALIDATION.md`.
+- Data Protection ya validado se conserva. No mezclar su contexto, migración o certificados con esta funcionalidad. Mantener Identity y políticas vigentes.
+- Estado y límites comprobados en `MANDATORY_PHOTO_REGISTRATION.md` y `MANDATORY_PHOTO_REAL_VALIDATION.md`; distinguir la fase simulada anterior del flujo real aprobado de Neon/Cloudinary. Chromium emulado o `setInputFiles` no certifican una cámara física. No hubo publicación por aplicar la migración.

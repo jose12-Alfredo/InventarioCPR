@@ -170,10 +170,34 @@ namespace InventarioCPR.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("CommercialModelId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("DraftPayload")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("FinalizedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<int>("RegistrationRevision")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RegistrationState")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("Draft");
+
+                    b.Property<DateTimeOffset?>("RegistrationUpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("RequiresRegistrationPhoto")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
 
                     b.Property<string>("SerialAvailability")
                         .IsRequired()
@@ -195,15 +219,21 @@ namespace InventarioCPR.Infrastructure.Persistence.Migrations
                     b.HasIndex("CodeNormalized")
                         .IsUnique();
 
+                    b.HasIndex("RegistrationState", "CodeNormalized");
+
                     b.HasIndex("CommercialModelId", "BrandId", "CategoryId");
 
                     b.ToTable("equipment", null, t =>
                         {
                             t.HasCheckConstraint("CK_equipment_code", "length(btrim(\"Code\")) > 0");
 
+                            t.HasCheckConstraint("CK_equipment_draft_size", "\"DraftPayload\" IS NULL OR length(\"DraftPayload\") <= 65536");
+
                             t.HasCheckConstraint("CK_equipment_model_brand", "\"CommercialModelId\" IS NULL OR \"BrandId\" IS NOT NULL");
 
                             t.HasCheckConstraint("CK_equipment_name", "length(btrim(\"Name\")) > 0");
+
+                            t.HasCheckConstraint("CK_equipment_registration", "\"RegistrationState\" IN ('Draft','Definitive') AND \"RegistrationRevision\" >= 0 AND (\"RegistrationState\" <> 'Definitive' OR (\"DraftPayload\" IS NULL AND (NOT \"RequiresRegistrationPhoto\" OR \"FinalizedAtUtc\" IS NOT NULL)))");
 
                             t.HasCheckConstraint("CK_equipment_serial", "(\"SerialAvailability\" = 'Recorded' AND nullif(btrim(\"SerialNumber\"), '') IS NOT NULL) OR (\"SerialAvailability\" IN ('NotRecorded', 'NotApplicable') AND \"SerialNumber\" IS NULL) OR \"SerialAvailability\" = 'PendingVerification'");
                         });

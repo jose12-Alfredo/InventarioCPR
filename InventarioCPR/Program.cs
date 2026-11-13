@@ -15,8 +15,8 @@ using System.Threading.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using CloudinaryDotNet;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
+using InventarioCPR.Infrastructure.Security.DataProtection;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -385,15 +385,8 @@ if (renderDeployment)
         options.KnownIPNetworks.Clear();
         options.KnownProxies.Clear();
     });
-    var keysPath = builder.Configuration["DataProtection:KeysPath"] ??
-        (renderEnvironment ? "/var/data/keys" : null);
-    if (string.IsNullOrWhiteSpace(keysPath) || !Path.IsPathRooted(keysPath))
-        throw new InvalidOperationException("Configure DataProtection:KeysPath con una ruta absoluta persistente.");
-    Directory.CreateDirectory(keysPath);
-    builder.Services.AddDataProtection()
-        .SetApplicationName("InventarioCPR")
-        .PersistKeysToFileSystem(new DirectoryInfo(keysPath));
 }
+builder.Services.AddInventoryDataProtection(builder.Configuration, builder.Environment.IsDevelopment(), renderDeployment);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 if (identityEnabled)

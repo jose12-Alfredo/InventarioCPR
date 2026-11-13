@@ -16,6 +16,15 @@ export function openForm(dialog, callback) {
             event.preventDefault();
             callback.invokeMethodAsync('OnDialogCancelAsync');
         });
+        dialog.addEventListener('keydown', event => {
+            if (event.key !== 'Tab' || event.target.closest('dialog') !== dialog) return;
+            const controls = [...dialog.querySelectorAll('button, a[href], input, select, textarea, summary, [tabindex]')]
+                .filter(element => !element.disabled && element.tabIndex >= 0 && element.getClientRects().length);
+            const first = controls[0], last = controls.at(-1);
+            if (!first) return;
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+        });
         dialog.dataset.cancelBound = 'true';
     }
     const tabs = dialog.querySelector('.technical-preview__tabs');
@@ -174,8 +183,8 @@ function releaseDetailOverlay(state) {
     document.body.style.overflow = state.previousOverflow ?? '';
 }
 
-export function confirmDiscard() {
-    return window.confirm('Hay cambios sin guardar. ¿Desea cerrar el formulario y descartarlos?');
+export function confirmDiscard(message) {
+    return window.confirm(message || 'Hay cambios sin guardar. ¿Desea cerrar el formulario y descartarlos?');
 }
 
 export function focusTab(index) {

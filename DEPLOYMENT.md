@@ -1,6 +1,12 @@
 # Preparación de GitHub y Render
 
+**Registro con fotografía obligatoria (validación real al 2026-11-13):** `20261112200209_EquipmentDraftFinalization` ya está aplicada exclusivamente en la rama autorizada `test-migracion-inicial` (`br-flat-smoke-b4kdmosq`). Backfill de 42 equipos anteriores y flujo real con tres fixtures/cuatro fotos Cloudinary verificados; no repetir esa migración ni asumir autorización para otra rama. Evidencia en `InventarioCPR/MANDATORY_PHOTO_REAL_VALIDATION.md`. No hubo commit, push o despliegue; el servicio Render anterior no incorpora automáticamente el nuevo flujo por haber migrado Neon. Data Protection validado permanece sin modificaciones.
+
 Este documento describe la preparación del repositorio privado y el despliegue futuro de InventarioCPR. No autoriza migraciones, creación de cuentas ni cambios en la rama `production` de Neon.
+
+La implementación local de Data Protection ahora usa PostgreSQL y certificado, compatible con Render Free. Su activación está pendiente: seguir `InventarioCPR/DATA_PROTECTION.md` y `InventarioCPR/CREDENTIAL_ROTATION.md` antes de publicar esta versión. No se ha cambiado el servicio remoto.
+
+**Validación Neon real (2026-11-12):** migración `20261112184907_PersistProtectionKeys` aplicada únicamente a `test-migracion-inicial`, ID remoto `br-flat-smoke-b4kdmosq`, endpoint remoto `ep-raspy-dream-b476uukh`. Pasaron las pruebas de llavero entre procesos, cookies/antiforgery y rotación; no se hizo commit, push ni despliegue. Instrucciones concretas y límites en `InventarioCPR/DATA_PROTECTION_NEON_VALIDATION.md`. El certificado definitivo de Render sigue pendiente; al reutilizar ese llavero también se necesitan A y B como certificados históricos de lectura. No volver a aplicar la migración en esa rama ni asumir autorización para otra.
 
 ## Estado de preparación
 
@@ -76,21 +82,24 @@ Configurar como secretos o variables del servicio:
 | `Security__EnableIdentity=true` | Mantiene Identity obligatoria | No |
 | `Inventory__ProductionWritesEnabled=true` | Habilita altas/ediciones solo después de aprobar esquema y operación | No |
 | `Inventory__PhotosEnabled=true` | Habilita fotografías solo con EquipmentPhotoHistory aplicada en el destino aprobado | No |
-| `DataProtection__KeysPath=/var/data/keys` | Ruta predeterminada de la imagen; puede sobrescribirse si cambia el montaje | No |
+| `DataProtection__UseDatabase=true` | Exige el llavero PostgreSQL y su migración independiente aprobada | No |
+| `DataProtection__Certificate__Base64` o `DataProtection__Certificate__Path` | PFX definitivo en configuración segura o archivo secreto; exactamente una fuente | Sí |
+| `DataProtection__Certificate__Password` | Contraseña del PFX que cifra el llavero; no es un certificado Kestrel | Sí |
+| `ConnectionStrings__DataProtection` | Opcional: rol dedicado; si se omite se reutiliza Database | Sí |
 | `Cloudinary__CloudName` | Nombre de cuenta Cloudinary | Según política |
 | `Cloudinary__ApiKey` | Clave API Cloudinary | Sí |
 | `Cloudinary__ApiSecret` | Secreto API Cloudinary | Sí |
 | `Cloudinary__TestAssetFolder` | Carpeta exclusiva para la prueba física con imágenes ficticias; no mezclarla con fotografías empresariales | No |
 
-No es necesario configurar `PORT`: Render usa `10000` de forma predeterminada y puede proporcionar otro valor. Tampoco configurar un certificado Kestrel ni una contraseña PFX: Render termina TLS y reenvía el esquema HTTPS. La aplicación reconoce `RENDER=true`, confía los encabezados reenviados únicamente en ese modo y escucha HTTP dentro del contenedor. `RENDER_EXTERNAL_HOSTNAME` restringe automáticamente el host nativo; configurar `AllowedHosts` manualmente al añadir un dominio personalizado.
+No es necesario configurar `PORT`: Render usa `10000` de forma predeterminada y puede proporcionar otro valor. No configurar un certificado Kestrel: Render termina TLS y reenvía el esquema HTTPS. El certificado Data Protection y su contraseña sí son necesarios para cifrar el llavero en PostgreSQL. La aplicación reconoce `RENDER=true`, confía los encabezados reenviados únicamente en ese modo y escucha HTTP dentro del contenedor. `RENDER_EXTERNAL_HOSTNAME` restringe automáticamente el host nativo; configurar `AllowedHosts` manualmente al añadir un dominio personalizado.
 
 La cadena `ConnectionStrings__Database` se valida con TLS `VerifyFull`. Guardarla solo en el panel de variables de Render y usar una credencial Neon con privilegios mínimos. No reutilizar User Secrets ni pegar la cadena en archivos, commits, incidencias o logs.
 
 ## Disco, sesiones y WebSockets
 
-- Adjuntar un **Persistent Disk** de Render montado en `/var/data` antes de iniciar Production.
-- Mantener `DataProtection__KeysPath=/var/data/keys` para que cookies Identity y tokens antiforgery sobrevivan reinicios.
-- Empezar con una sola instancia. Varias instancias requerirían claves compartidas y una estrategia compatible con los circuitos de Blazor Server.
+- Render Free no requiere disco persistente para esta implementación: las claves se almacenan cifradas en PostgreSQL y el certificado se suministra externamente.
+- Revisar la transición del llavero antiguo antes de cualquier redeploy; sin recuperar sus claves no se pueden preservar cookies emitidas previamente. Ver `InventarioCPR/DATA_PROTECTION.md`.
+- Empezar con una sola instancia. El llavero PostgreSQL es compartible; varias instancias también requieren certificados compartidos y una estrategia compatible con los circuitos de Blazor Server.
 - Render admite WebSockets; comprobar después del despliegue que el circuito Blazor usa `wss`, reconecta y conserva autorización.
 - Configurar el health check de Render en `/healthz`. Devuelve solo estado HTTP y no consulta Neon ni Cloudinary.
 
@@ -134,7 +143,7 @@ No ejecutar la imagen con credenciales Production durante una comprobación loca
 
 1. Autorizar la aplicación de Render en GitHub solo para el repositorio privado de InventarioCPR.
 2. Crear el Web Service Docker y seleccionar la rama protegida que se vaya a desplegar.
-3. Añadir el disco persistente y las variables anteriores antes del primer arranque.
+3. Aplicar la migración independiente de Data Protection solo con autorización y añadir certificado/variables anteriores antes del primer arranque de esta versión.
 4. Desactivar auto-deploy hasta completar la preparación de Production y una revisión del cambio.
 5. Tras autorizar el despliegue, comprobar `/healthz`, login, logout, permisos por rol, WebSockets, reinicio y persistencia de sesión.
 6. Revisar logs sin habilitar datos sensibles, cadenas de conexión ni logging detallado de EF.

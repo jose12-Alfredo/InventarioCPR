@@ -13,6 +13,10 @@ public sealed class EquipmentInput
     public string? ProcessorModel { get; set; }
     public string? ProcessorName { get; set; }
     public decimal? TotalRamGb { get; set; }
+    public bool? RamModulesComplete { get; set; }
+    // UI edits can leave technical data untouched and protect against stale technical snapshots.
+    public bool UpdateTechnicalData { get; set; } = true;
+    public int? ExpectedTechnicalRevision { get; set; }
     public string? OperatingSystem { get; set; }
     public List<RamInput> RamModules { get; set; } = [];
     public List<StorageInput> StorageUnits { get; set; } = [];
@@ -30,11 +34,13 @@ public sealed class EquipmentInput
 
 public sealed class RamInput
 {
+    public Guid? OriginalId { get; set; }
     public decimal? CapacityGb { get; set; }
 }
 
 public sealed class StorageInput
 {
+    public Guid? OriginalId { get; set; }
     public string? Technology { get; set; }
     public string? Interface { get; set; }
     public decimal? Capacity { get; set; }

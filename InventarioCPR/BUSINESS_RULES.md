@@ -28,7 +28,7 @@ Este documento no define todavía entidades, tablas, migraciones ni detalles de 
 #### Reglas obligatorias confirmadas
 
 - Código único para cada equipo y expediente digital permanente.
-- Alta inicial con solo código, categoría y nombre descriptivo; se conservan códigos heredados como `EQ_1`.
+- Alta definitiva nueva con código, categoría, nombre y fotografía principal real confirmada; se conservan códigos heredados como `EQ_1` y equipos anteriores sin foto.
 - Los demás datos pueden estar no registrados, no aplicar o estar pendientes de verificar, sin inventar valores.
 - Historial completo de responsables, asignaciones, entregas y devoluciones.
 - Una sola custodia vigente por equipo.
@@ -40,7 +40,7 @@ Este documento no define todavía entidades, tablas, migraciones ni detalles de 
 - Auditoría prioritaria de operaciones críticas.
 - Control de concurrencia en asignaciones, devoluciones y movimientos.
 - Características técnicas estructuradas por categoría, con configuración actual e historial de cambios de componentes.
-- Alta inicial con solo código único, categoría y nombre descriptivo; el resto puede verificarse y completarse después.
+- Borradores incompletos retomables, excluidos del listado y conteo normales de definitivos. La foto es obligatoria al finalizar, no al guardar el borrador.
 
 #### Reglas propuestas para la primera versión
 
@@ -67,7 +67,7 @@ Este documento no define todavía entidades, tablas, migraciones ni detalles de 
 - Aprobar formato de generación de códigos futuros, moneda, zona horaria, catálogos de estados y roles preliminares.
 - Definir criterios de verificación de números de serie y atributos técnicos por categoría sin elevarlos a mínimos de alta.
 - Determinar cuándo un equipo con limitaciones puede asignarse.
-- Definir fotografías, firmas o comprobantes obligatorios por operación.
+- Definir fotografías, firmas o comprobantes obligatorios por otras operaciones; la fotografía principal para finalizar altas nuevas ya está aprobada (RN-117).
 - Aprobar permisos concretos para baja, reactivación, gastos y auditoría.
 
 ### 3.2 Historial de revisión
@@ -78,6 +78,8 @@ Este documento no define todavía entidades, tablas, migraciones ni detalles de 
 | 2026-10-26 | Revisión final de negocio | Se aceptó la estructura como base, se confirmaron las reglas fundamentales, se simplificaron baja/reactivación y gastos, y se incorporaron accesorios, kits, ubicaciones y movimientos por ítem. |
 | 2026-10-26 | Características técnicas | Se confirmó el registro estructurado por categoría, módulos de RAM y discos múltiples, historial de ampliaciones y reemplazos y captura progresiva de datos incompletos antes de la primera migración. |
 | 2026-10-26 | Mínimos y verificación | Se aprobó alta inicial con código, categoría y nombre; conservación de códigos heredados, estados explícitos de datos faltantes, última verificación y pendientes visibles en el expediente. |
+| 2026-11-12 | Fotografía obligatoria y borradores | El usuario aprobó implementar Borrador → Definitiva con principal real confirmada para altas nuevas, sustituyendo la anterior excepción de foto inicial de RN-111/116. Implementado localmente; migración preparada, no aplicada a Neon. |
+| 2026-11-13 | Validación real autorizada | Migración EquipmentDraftFinalization aplicada solo a test-migracion-inicial; 42 registros anteriores conservados. Tres fixtures definitivos con cuatro imágenes reales Cloudinary, cierre/reapertura, reintentos, controles de acceso y finalización concurrente aprobados. Render no actualizado. |
 
 Las propuestas de código, moneda, zona horaria, catálogos de estado, retorno esperado y roles quedan registradas sin considerarse todavía aprobadas.
 
@@ -122,7 +124,7 @@ Las reglas RN-080 y RN-085 dejan de estar confirmadas por decisión: la revisió
 
 - **Estado:** Confirmada por requisitos.
 - **Descripción:** El expediente contiene información técnica, fotografía principal, galería, ubicación, condiciones e historiales.
-- **Condiciones:** Para el alta inicial solo son obligatorios código único, categoría y nombre descriptivo (RN-111). Los demás datos pueden no estar registrados; no se presentarán como verificados hasta revisarlos.
+- **Condiciones:** Para finalizar un alta nueva son obligatorios código único, categoría, nombre descriptivo y fotografía principal confirmada (RN-111/117). Los demás datos pueden no estar registrados; no se presentarán como verificados hasta revisarlos. Los equipos anteriores conservan su condición de definitivos aunque no tengan foto.
 - **Operaciones prohibidas:** Rechazar el alta por falta de foto, ubicación, responsable, serie o especificaciones, o presentar datos ausentes como completos.
 - **Consecuencias históricas:** Los cambios relevantes generan trazabilidad sin reescribir eventos anteriores.
 - **Validaciones de servidor:** Validar en alta código, categoría y nombre; comprobar solo los datos opcionales efectivamente informados y reservar su verificación posterior.
@@ -304,15 +306,15 @@ Para otras categorías se proponen `DefiniciónAtributoCategoría` (clave establ
 - **Validaciones de servidor:** Normalización y unicidad global compatibles con formatos anteriores y futuros, sin exigir un prefijo específico.
 - **Casos de prueba:** Éxito: dar de alta `EQ_1` conserva su escritura original. Rechazo: reutilizar `EQ_1` para otro equipo falla.
 
-### RN-111 - Mínimos de alta inicial
+### RN-111 - Mínimos de alta definitiva nueva
 
 - **Estado:** Confirmada por decisión.
-- **Descripción:** Solo código único, categoría y nombre descriptivo son obligatorios para el alta inicial, incluso en computadoras y laptops.
-- **Condiciones:** Los tres datos deben ser válidos; los restantes son opcionales y se completan posteriormente según corresponda.
-- **Operaciones prohibidas:** Exigir responsable, ubicación, foto, serie, RAM, disco, estado físico u operativo para crear el expediente inicial.
-- **Consecuencias históricas:** La incorporación parcial conserva la fecha real del alta; completar datos genera hechos posteriores sin modificar artificialmente el momento inicial.
-- **Validaciones de servidor:** Obligatoriedad y unicidad del código; existencia de categoría y nombre no vacío; validar tipos de cualquier dato opcional informado.
-- **Casos de prueba:** Éxito: crear expediente con `EQ_1`, categoría laptop y nombre, sin más datos. Rechazo: crear sin nombre o con código repetido falla.
+- **Descripción:** Código único, categoría, nombre descriptivo y fotografía principal real confirmada son obligatorios para finalizar un equipo nuevo, incluso en computadoras y laptops. Actualiza la decisión de mínimos del 26 de octubre.
+- **Condiciones:** Puede crearse antes un borrador incompleto; no cuenta como equipo definitivo. Los demás datos son opcionales, pero deben ser coherentes cuando se confirman.
+- **Operaciones prohibidas:** Finalizar sin foto principal confirmada; exigir responsable, ubicación, serie, RAM, disco o condiciones como mínimos adicionales. No exigir retroactivamente foto a los equipos anteriores.
+- **Consecuencias históricas:** Fecha de finalización asignada por servidor. Las evidencias previas y todos los códigos de equipos anteriores se conservan.
+- **Validaciones de servidor:** Obligatoriedad y unicidad del código; categoría y nombre válidos; datos opcionales coherentes; principal vigente del mismo equipo, subida completada y bytes privados de Cloudinary válidos con hash coincidente. Bloqueo y revisión de concurrencia al finalizar.
+- **Casos de prueba:** Éxito: guardar un borrador incompleto, subir una foto y finalizar tras completar mínimos. Rechazo: finalizar con solo reserva, bytes no confirmados, foto ajena o remoto inaccesible conserva el borrador.
 
 ### RN-112 - Estados de disponibilidad de datos
 
@@ -359,10 +361,20 @@ Para otras categorías se proponen `DefiniciónAtributoCategoría` (clave establ
 - **Estado:** Confirmada por decisión.
 - **Descripción:** Las observaciones originales del Excel se conservan como fuente y nuevas notas y fotografías se añaden al expediente sin reemplazar las anteriores.
 - **Condiciones:** Si no hay observación o imagen disponible, permanece no registrada; no se fabrica una evidencia para satisfacer el alta.
-- **Operaciones prohibidas:** Sobrescribir el texto original al añadir una nota, exigir fotografía inicial para el alta o reemplazar imágenes históricas.
+- **Operaciones prohibidas:** Sobrescribir el texto original al añadir una nota, exigir retroactivamente fotografía a equipos anteriores o reemplazar imágenes históricas. Las altas nuevas sí requieren foto principal al finalizar según RN-117.
 - **Consecuencias históricas:** Fuente original, notas posteriores y evidencias quedan fechadas y relacionadas con su contexto.
 - **Validaciones de servidor:** Validar procedencia, relación con equipo, acceso autorizado y versionado según RN-060/061.
 - **Casos de prueba:** Éxito: añadir nota y fotografía deja intacta observación original. Rechazo: actualizar una evidencia antigua con bytes nuevos falla.
+
+### RN-117 - Borrador, finalización e idempotencia de fotografías
+
+- **Estado:** Confirmada por decisión expresa del usuario; implementada y validada en Neon/Cloudinary reales tras autorización exclusiva de `test-migracion-inicial`. Publicación de la versión y Render pendientes; resultados en `MANDATORY_PHOTO_REAL_VALIDATION.md`.
+- **Descripción:** Todo equipo nuevo comienza como Borrador y solo pasa a Definitiva tras confirmación de su fotografía principal. Se admiten varias fotos. La primera subida confirmada se selecciona como principal si todavía no hay una; los cambios posteriores conservan periodos históricos.
+- **Condiciones:** Un borrador tiene ID estable aunque falten código, categoría o nombre; los marcadores internos no son un código patrimonial definitivo. Se guardan datos parciales sin crear todavía hechos confirmados de inspección/verificación. Finalizar valida todos los datos opcionales informados y emite sus hechos una sola vez.
+- **Operaciones prohibidas:** Contar borradores como definitivos, duplicar expediente por reintentar una subida, sustituir una principal nueva por evidencia no confirmada, retirar la exigencia de foto o devolver un definitivo a borrador. No existen operaciones de borrado de evidencias.
+- **Consecuencias históricas:** El mismo ID sirve para reservar, subir, reintentar, retomar y finalizar. Las altas anteriores a la migración se conservan como Definitivas con excepción legacy explícita, sin inventar fotos o fechas de finalización.
+- **Validaciones de servidor:** Permisos actuales; revisión optimista de borrador; serialización sobre la misma fila que usan las fotografías; lectura e integridad del objeto privado antes del commit. La UI solo habilita Finalizar cuando el servidor confirma principal y datos válidos; el servicio vuelve a comprobarlos. Un fallo conserva el borrador y sus evidencias.
+- **Casos de prueba:** Repetir finalización no duplica hechos; dos peticiones concurrentes conservan un expediente; subida fallida y retry conservan reserva/ID; borrador con revisión obsoleta no pisa datos; equipo legacy sin foto permanece en listado definitivo.
 
 ## 5. Reglas de usuarios y responsables
 

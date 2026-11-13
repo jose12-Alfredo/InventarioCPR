@@ -99,6 +99,7 @@
 @code {
     [Parameter] public Guid EquipmentId { get; set; }
     [Parameter] public EventCallback Changed { get; set; }
+    [Parameter] public EventCallback<PhotoQueueState> QueueChanged { get; set; }
     private ElementReference root, viewer;
     private IJSObjectReference? module;
     private DotNetObjectReference<EquipmentPhotos>? callback;
@@ -106,52 +107,62 @@
     private readonly List<Preview> selection = [];
     private string? error, viewerUrl, viewerNote;
     private string viewerTitle = "Fotografía";
-    private bool busy, openViewer;
+    private bool busy, openViewer, disposed;
     private int page, loadSequence;
     private string BaseUrl => $"/api/equipment/{EquipmentId}/photos";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (disposed) return;
         if (firstRender)
         {
-            module = await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Inventory/EquipmentPhotos.razor.js");
+            var imported = await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Inventory/EquipmentPhotos.razor.js");
+            if (disposed) { await imported.DisposeAsync(); return; }
+            module = imported;
             callback = DotNetObjectReference.Create(this);
             await module.InvokeVoidAsync("bind", root, callback);
             await ReloadAsync();
         }
-        if (module is not null)
+        var activeModule = module;
+        if (!disposed && activeModule is not null)
         {
-            await module.InvokeVoidAsync("bindInputs", root);
-            if (openViewer) { openViewer = false; await module.InvokeVoidAsync("showViewer", viewer, callback); }
+            try
+            {
+                await activeModule.InvokeVoidAsync("bindInputs", root);
+                if (!disposed && openViewer) { openViewer = false; await activeModule.InvokeVoidAsync("showViewer", viewer, callback); }
+            }
+            catch (ObjectDisposedException) when (disposed) { }
         }
     }
 
     private async Task ReloadAsync()
     {
-        if (module is null) return;
+        if (module is null || disposed) return;
         var sequence = ++loadSequence;
         try
         {
             var loaded = await module.InvokeAsync<PhotoPage>("request", BaseUrl + $"?page={page}", "GET", null);
-            if (sequence == loadSequence) { data = loaded; page = loaded.Page; }
+            if (!disposed && sequence == loadSequence) { data = loaded; page = loaded.Page; }
         }
         catch (JSException) { error = "No se pudo cargar la galería. Compruebe su sesión y la habilitación de fotografías, y pulse Actualizar."; }
-        await InvokeAsync(StateHasChanged);
+        if (!disposed) await InvokeAsync(StateHasChanged);
     }
-    private async Task RefreshGalleryAsync() { error = null; await ReloadAsync(); }
+    private async Task RefreshGalleryAsync() { error = null; await ReloadAsync(); await Changed.InvokeAsync(); }
 
-    [JSInvokable] public Task SelectionChanged(Preview[] items)
+    [JSInvokable] public async Task SelectionChanged(Preview[] items)
     {
         selection.Clear(); selection.AddRange(items); error = null;
-        return InvokeAsync(StateHasChanged);
+        await NotifyQueueAsync();
+        await InvokeAsync(StateHasChanged);
     }
     [JSInvokable] public Task SelectionError(string message) { error = message; return InvokeAsync(StateHasChanged); }
     [JSInvokable] public Preview[] GetSelectionMetadata() => selection.ToArray();
-    [JSInvokable] public Task UploadProgress(string key, int percent, string message, bool reserved)
+    [JSInvokable] public async Task UploadProgress(string key, int percent, string message, bool reserved)
     {
         var item = selection.FirstOrDefault(x => x.Key == key);
         if (item is not null) { item.Percent = percent; item.Message = message; item.Reserved |= reserved; }
-        return InvokeAsync(StateHasChanged);
+        await NotifyQueueAsync();
+        await InvokeAsync(StateHasChanged);
     }
     [JSInvokable] public void NavigateViewer(int direction)
     {
@@ -166,17 +177,19 @@
     {
         if (module is null || busy) return;
         busy = true; error = null;
-        try { await module.InvokeVoidAsync("upload", root, BaseUrl, selection); await Changed.InvokeAsync(); }
+        await NotifyQueueAsync();
+        try { await module.InvokeVoidAsync("upload", root, BaseUrl, selection); }
         catch (JSException) { error = "No se completaron todas las subidas. Reintente los archivos pendientes; las fotografías ya guardadas se conservan."; }
-        finally { busy = false; await ReloadAsync(); }
+        finally { busy = false; await ReloadAsync(); await NotifyQueueAsync(); await Changed.InvokeAsync(); }
     }
     private async Task SetPrincipalAsync(Guid photo)
     {
         if (module is null || busy) return;
         busy = true;
+        await NotifyQueueAsync();
         try { await module.InvokeVoidAsync("request", $"{BaseUrl}/{photo}/principal", "POST", null); await Changed.InvokeAsync(); }
         catch (JSException) { error = "No se confirmó el cambio de principal. Actualice para comprobar el estado guardado."; }
-        finally { busy = false; await ReloadAsync(); }
+        finally { busy = false; await ReloadAsync(); await NotifyQueueAsync(); }
     }
     private async Task RetryAsync(PhotoPendingItem pending)
     {
@@ -187,13 +200,17 @@
         if (module is not null) await module.InvokeVoidAsync("remove", root, index, selection);
     }
     private async Task ChangePageAsync(int change) { page = Math.Max(0, page + change); await ReloadAsync(); }
+    private Task NotifyQueueAsync() => QueueChanged.InvokeAsync(new PhotoQueueState(selection.Count(x => x.Percent < 100), busy));
     private void OpenViewer(string url, string title, string? note) { viewerUrl = url; viewerTitle = title; viewerNote = note; openViewer = true; }
     private async Task CloseViewerAsync() { if (module is not null) await module.InvokeVoidAsync("closeViewer", viewer); }
     public async ValueTask DisposeAsync()
     {
-        if (module is not null)
+        disposed = true;
+        var activeModule = module;
+        module = null;
+        if (activeModule is not null)
         {
-            try { await module.InvokeVoidAsync("dispose", root, viewer); await module.DisposeAsync(); } catch (JSDisconnectedException) { }
+            try { await activeModule.InvokeVoidAsync("dispose", root, viewer); await activeModule.DisposeAsync(); } catch (JSDisconnectedException) { }
         }
         callback?.Dispose();
     }

@@ -9,6 +9,9 @@ public sealed class MigrationTestDbContextFactory : IDesignTimeDbContextFactory<
 {
     public InventoryDbContext CreateDbContext(string[] args)
     {
+        if (args.Contains("--registration-design-only", StringComparer.Ordinal))
+            return new InventoryDbContext(new DbContextOptionsBuilder<InventoryDbContext>()
+                .UseNpgsql("Host=localhost;Database=registration_design_only;Username=design_only").Options);
         if (!args.Contains("--migration-test", StringComparer.Ordinal))
             throw new InvalidOperationException("EF CLI requiere -- --migration-test; no se permite apuntar a NeonDirect.");
 

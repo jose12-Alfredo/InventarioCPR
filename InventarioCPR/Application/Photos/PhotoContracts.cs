@@ -41,3 +41,4 @@ public sealed record PhotoContent(byte[] Bytes, string Format, int Width, int He
 
 public sealed record StoredPhoto(string PublicId, long Version);
 public sealed record PhotoUploadResult(Guid Id, bool AlreadyExists, string Type);
+public sealed record PhotoQueueState(int Pending, bool Busy);

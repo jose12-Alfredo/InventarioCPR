@@ -136,6 +136,7 @@ public sealed class EquipmentPhotoService(IDbContextFactory<InventoryDbContext> 
         await db.SaveChangesAsync(ct);
         upload.CompletedAtUtc = DateTimeOffset.UtcNow;
         upload.EvidenceId = evidence.Id;
+        await EnsureFirstPrincipalAsync(db, equipment, evidence.Id, actor, ct);
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
         return new PhotoUploadResult(evidence.Id, false, evidence.EvidenceType);
@@ -151,6 +152,19 @@ public sealed class EquipmentPhotoService(IDbContextFactory<InventoryDbContext> 
         await LockEquipmentAsync(db, equipment, ct);
         if (!await db.PhotoEvidence.AnyAsync(x => x.Id == photo && x.EquipmentId == equipment, ct))
             throw new PhotoException("La fotografía no pertenece al expediente.", 404);
+        if (await db.Equipment.AnyAsync(x => x.Id == equipment && x.RequiresRegistrationPhoto &&
+                x.RegistrationState == EquipmentRegistrationState.Definitive, ct))
+        {
+            var confirmed = await db.PhotoEvidence.AsNoTracking().SingleAsync(x => x.Id == photo && x.EquipmentId == equipment, ct);
+            if (confirmed.Sha256 is null || confirmed.CloudinaryVersion is not > 0 ||
+                !await db.PhotoUploads.AnyAsync(x => x.EquipmentId == equipment && x.EvidenceId == photo &&
+                    x.CompletedAtUtc != null && x.Sha256 == confirmed.Sha256, ct))
+                throw new PhotoException("La principal debe ser una fotografía confirmada de este equipo.");
+            var bytes = await storage.ReadAsync(confirmed.CloudinaryPublicId, confirmed.CloudinaryVersion, confirmed.Format, ct);
+            if (!CryptographicOperations.FixedTimeEquals(SHA256.HashData(bytes), Convert.FromHexString(confirmed.Sha256)))
+                throw new PhotoException("No se confirmó la integridad de la nueva fotografía principal.");
+            _ = PhotoImageProcessor.ValidateStored(bytes);
+        }
         var current = await db.PhotoPrincipalPeriods.SingleOrDefaultAsync(x => x.EquipmentId == equipment && x.ToUtc == null, ct);
         if (current?.PhotoId == photo) return;
         var now = DateTimeOffset.UtcNow;
@@ -186,4 +200,14 @@ public sealed class EquipmentPhotoService(IDbContextFactory<InventoryDbContext> 
 
     private static Task<int> LockEquipmentAsync(InventoryDbContext db, Guid id, CancellationToken ct) =>
         db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM equipment WHERE \"Id\" = {id} FOR UPDATE", ct);
+
+    private static async Task EnsureFirstPrincipalAsync(InventoryDbContext db, Guid equipment, Guid photo, PhotoActor actor, CancellationToken ct)
+    {
+        if (!await db.PhotoPrincipalPeriods.AnyAsync(x => x.EquipmentId == equipment && x.ToUtc == null, ct))
+            db.PhotoPrincipalPeriods.Add(new PhotoPrincipalPeriod
+            {
+                Id = Guid.NewGuid(), EquipmentId = equipment, PhotoId = photo,
+                FromUtc = DateTimeOffset.UtcNow, ActorId = actor.Id, ActorName = actor.Name
+            });
+    }
 }
