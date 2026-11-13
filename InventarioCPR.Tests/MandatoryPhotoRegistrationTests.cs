@@ -27,6 +27,47 @@ public sealed class RegistrationLocalPostgresFactAttribute : FactAttribute
 public sealed class MandatoryPhotoRegistrationTests
 {
     [RegistrationLocalPostgresFact]
+    public async Task DraftSavedByPreviousRuntimeRetainsCategoryAndExistingFacts()
+    {
+        await using var f = await Fixture.Create();
+        var id = Guid.NewGuid(); var category = Guid.NewGuid(); var inspector = Guid.NewGuid();
+        using (var seed = f.Db())
+        {
+            seed.Categories.Add(new EquipmentCategory { Id = category, Name = "Laptop" });
+            seed.StaffMembers.Add(new StaffMember { Id = inspector, Name = "Inspector ficticio anterior" });
+            await seed.SaveChangesAsync();
+            // Same INSERT shape as the previously deployed application: new columns use DB defaults.
+            await seed.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO equipment (\"Id\",\"Code\",\"Name\",\"CategoryId\",\"SerialAvailability\",\"SerialNumber\") VALUES ({id}, 'PREVIOUS_RUNTIME_DRAFT', 'Laptop anterior ficticia', {category}, 'Recorded', 'SERIE-FICTICIA')");
+            seed.TechnicalConfigurations.Add(new TechnicalConfiguration
+            {
+                Id = Guid.NewGuid(), EquipmentId = id, CategoryId = category, Revision = 1,
+                EffectiveFromUtc = DateTimeOffset.UtcNow, TotalRamGb = 16, RamModulesComplete = true,
+                RamModules = [new() { Id = Guid.NewGuid(), Slot = 1, CapacityGb = 8, Technology = "DDR4" }, new() { Id = Guid.NewGuid(), Slot = 2, CapacityGb = 8, Technology = "DDR4" }]
+            });
+            seed.Inspections.Add(new EquipmentInspection { Id = Guid.NewGuid(), EquipmentId = id, InspectorId = inspector, InspectedAtUtc = DateTimeOffset.UtcNow, PhysicalCondition = "Inspección ficticia anterior" });
+            seed.Observations.Add(new EquipmentObservation { Id = Guid.NewGuid(), EquipmentId = id, Source = "Formulario", Text = "Nota anterior conservada", RecordedAtUtc = DateTimeOffset.UtcNow });
+            await seed.SaveChangesAsync();
+        }
+        var draft = (await f.Inventory.GetAsync(id))!;
+        Assert.True(draft.IsDraft);
+        Assert.Equal("laptop", draft.Input.Category);
+        Assert.Equal("SERIE-FICTICIA", draft.Input.Serial);
+        Assert.Equal(16, draft.Input.TotalRamGb);
+        Assert.Equal("Inspector ficticio anterior", draft.Input.Inspector);
+        Assert.False((await f.Inventory.GetRegistrationReadinessAsync(id)).CanFinalize);
+        await f.Inventory.SaveDraftAsync(draft.Input, id, 0);
+        await f.Upload(id);
+        await f.Inventory.FinalizeRegistrationAsync(id, 1);
+        using var check = f.Db();
+        Assert.Equal(EquipmentRegistrationState.Definitive, (await check.Equipment.SingleAsync()).RegistrationState);
+        Assert.Equal(1, await check.TechnicalConfigurations.CountAsync());
+        Assert.Equal(1, await check.Inspections.CountAsync());
+        Assert.Equal(1, await check.Observations.CountAsync());
+        Assert.Equal(2, await check.RamModules.CountAsync());
+        Assert.Equal("laptop", (await f.Inventory.GetAsync(id))!.Input.Category);
+    }
+
+    [RegistrationLocalPostgresFact]
     public async Task CompleteDraftCreatesFactsOnlyOnceAndTechnicalEditsKeepRevisions()
     {
         await using var f = await Fixture.Create();

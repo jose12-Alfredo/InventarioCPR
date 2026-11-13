@@ -116,10 +116,10 @@ public sealed partial class InventoryService(IDbContextFactory<InventoryDbContex
             .Include(x => x.Category).Include(x => x.Brand).Include(x => x.CommercialModel)
             .Include(x => x.TechnicalConfigurations).ThenInclude(x => x.RamModules)
             .Include(x => x.TechnicalConfigurations).ThenInclude(x => x.StorageUnits)
-            .Include(x => x.Observations).Include(x => x.Inspections)
+            .Include(x => x.Observations).Include(x => x.Inspections).ThenInclude(x => x.Inspector)
             .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (equipment is null) return null;
-        if (equipment.RegistrationState == EquipmentRegistrationState.Draft)
+        if (equipment.RegistrationState == EquipmentRegistrationState.Draft && equipment.DraftPayload is not null)
             return new EquipmentDetails(id, ReadDraft(equipment), [], null, true, equipment.RegistrationRevision, true);
         var latest = equipment.TechnicalConfigurations.SingleOrDefault(x => x.EffectiveToUtc is null);
         var inspection = equipment.Inspections.OrderByDescending(x => x.InspectedAtUtc).FirstOrDefault();
@@ -162,6 +162,7 @@ public sealed partial class InventoryService(IDbContextFactory<InventoryDbContex
                     Capacity = x.Capacity, Unit = x.CapacityUnit }).ToList() ?? [],
             Site = location?.Location.Site.Name, Location = location?.Location.Name,
             PhysicalCondition = inspection?.PhysicalCondition, OperationalCondition = inspection?.OperationalCondition,
+            Inspector = equipment.RegistrationState == EquipmentRegistrationState.Draft ? inspection?.Inspector.Name : null,
             Observation = null,
             PendingFields = markers.Where(x => x.Availability == DataAvailability.PendingVerification)
                 .Select(x => x.FieldKey).ToList(),
@@ -179,7 +180,7 @@ public sealed partial class InventoryService(IDbContextFactory<InventoryDbContex
         if (verification is not null)
             history.Add($"Última verificación: {verification.VerifiedAtUtc:yyyy-MM-dd HH:mm} UTC · {verification.Verifier.Name}");
         return new EquipmentDetails(id, input, history, photoId is Guid photo ? PhotoRules.ContentUrl(id, photo) : null,
-            false, equipment.RegistrationRevision, equipment.RequiresRegistrationPhoto);
+            equipment.RegistrationState == EquipmentRegistrationState.Draft, equipment.RegistrationRevision, equipment.RequiresRegistrationPhoto);
     }
 
     public async Task<Guid> SaveAsync(EquipmentInput input, Guid? id = null, CancellationToken cancellationToken = default)

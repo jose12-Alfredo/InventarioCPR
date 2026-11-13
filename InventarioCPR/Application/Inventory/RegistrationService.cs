@@ -88,7 +88,12 @@ public sealed partial class InventoryService
         var principal = await ConfirmedPrincipalAsync(db, id, ct);
         var message = "Falta una fotografía principal confirmada. Suba una imagen o recupere la subida pendiente.";
         var valid = false;
-        try { ValidateDraftForFinalization(ReadDraft(equipment)); valid = true; }
+        try
+        {
+            var input = equipment.DraftPayload is null ? (await GetAsync(id, ct))!.Input : ReadDraft(equipment);
+            ValidateDraftForFinalization(input);
+            valid = true;
+        }
         catch (InventoryValidationException error) { message = error.Message; }
         var ready = valid && principal is not null && PhotosAvailable;
         if (!PhotosAvailable) message = "Fotografías no disponibles en este entorno. Puede conservar y retomar el borrador.";
@@ -106,10 +111,12 @@ public sealed partial class InventoryService
         if (equipment.RegistrationState == EquipmentRegistrationState.Definitive) return id;
         if (equipment.RegistrationRevision != expectedRevision)
             throw new InventoryValidationException("El borrador cambió en otra sesión. Vuelva a abrirlo antes de finalizar.");
-        var input = ReadDraft(equipment);
+        // An older deployed binary can save after the schema upgrade without a JSON payload.
+        // Rehydrate its existing facts instead of inventing a category or dropping technical data.
+        var input = equipment.DraftPayload is null ? (await GetAsync(id, ct))!.Input : ReadDraft(equipment);
         ValidateDraftForFinalization(input);
         input.UpdateTechnicalData = true;
-        input.ExpectedTechnicalRevision = 0;
+        input.ExpectedTechnicalRevision ??= 0;
         return await SaveDefinitiveAsync(input, id, true, expectedRevision, ct);
     }
 

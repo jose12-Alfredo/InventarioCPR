@@ -2,6 +2,15 @@
 
 Última actualización: 2026-11-13
 
+## Bloqueo actual de publicación y corrección preparada
+
+- El usuario autorizó commit/push/despliegue. Publicación inicial 6705a08 en main confirmada en origin. Render falló: InvalidOperationException por faltar DataProtection:UseDatabase=true/certificado, y continúa mostrando los assets anteriores. No afirmar que la nueva versión está Live ni que la foto ya es obligatoria en esa pantalla antigua.
+- El usuario está dentro del dashboard en su navegador normal; el acceso Google desde Chrome automatizado fue rechazado. No intentar evadir ese control, extraer cookies personales ni solicitar contraseñas por chat.
+- Se preparó un certificado definitivo RSA3072 exclusivo Render-KeyProtection, vence 2028-11-13; no es certificado de tests ni HTTPS. Respaldo User Secrets InventarioCPR-local: RenderDeployment:DataProtection:Certificate:Base64 y Password. No imprimir valores. Certificados históricos A/B permanecen como lectores y las dos claves Neon se descifran correctamente; no se escribieron ni retiraron claves remotas.
+- Archivo seguro externo a Git con siete variables: C:\Users\jose1\AppData\Local\Temp\opencode\render-config\InventarioCPR.Render.env. ACL usuario local. Usuario debe importarlo desde Render → Environment → Add from .env → Save, rebuild, and deploy. No contiene ni cambia contraseñas PostgreSQL/Cloudinary. No retirar el guard de configuración de producción para eludir el fallo.
+- Validación de configuración/certificado: roundtrip local entre proveedores y lectura histórica Neon aprobados. Render aún no configurado desde esta sesión. Runbook sin secretos en ../RENDER_STARTUP_FIX.md.
+- Revisión de solo lectura detectó un Draft sin DraftPayload creado por el runtime antiguo, sin historia técnica. Se corrigió la recuperación para hidratar categoría/serie/técnica/inspector desde los datos originales y preservar revisión técnica al finalizar. Prueba con datos ficticios en PostgreSQL local: diez casos de registro obligatorio aprobados, cero fallidos. Ninguna modificación de ese borrador real y ninguna migración adicional.
+
 ## Prioridad actual: fotografía obligatoria validada con Neon y Cloudinary reales
 
 - Última autorización: aplicar `20261112200209_EquipmentDraftFinalization` solo a test-migracion-inicial y ejecutar pruebas ficticias reales. Sin commit/push/despliegue, sin cambiar credenciales ni Data Protection.

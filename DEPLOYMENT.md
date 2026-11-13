@@ -1,5 +1,7 @@
 # Preparación de GitHub y Render
 
+**Estado de publicación (2026-11-13):** commit inicial `6705a08` subido a `main`; el despliegue falló al faltar la configuración obligatoria Data Protection y la URL sigue sirviendo el binario anterior. Archivo privado de variables preparado y validado fuera de Git, pendiente de importar en Render. Instrucciones breves y corrección para recuperar borradores guardados por el binario anterior: `RENDER_STARTUP_FIX.md`.
+
 **Registro con fotografía obligatoria (validación real al 2026-11-13):** `20261112200209_EquipmentDraftFinalization` ya está aplicada exclusivamente en la rama autorizada `test-migracion-inicial` (`br-flat-smoke-b4kdmosq`). Backfill de 42 equipos anteriores y flujo real con tres fixtures/cuatro fotos Cloudinary verificados; no repetir esa migración ni asumir autorización para otra rama. Evidencia en `InventarioCPR/MANDATORY_PHOTO_REAL_VALIDATION.md`. No hubo commit, push o despliegue; el servicio Render anterior no incorpora automáticamente el nuevo flujo por haber migrado Neon. Data Protection validado permanece sin modificaciones.
 
 Este documento describe la preparación del repositorio privado y el despliegue futuro de InventarioCPR. No autoriza migraciones, creación de cuentas ni cambios en la rama `production` de Neon.
