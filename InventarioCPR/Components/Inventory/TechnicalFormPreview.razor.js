@@ -2,10 +2,6 @@ let formPreviousFocus;
 let formPreviousOverflow;
 let detailState;
 
-const inlineDetailMedia = window.matchMedia('(min-width: 98.5rem)');
-const shortCoarseMedia = window.matchMedia('(max-height: 30rem) and (pointer: coarse)');
-const inlineDetailWidth = 1240;
-
 export function openForm(dialog, callback) {
     if (!dialog || dialog.open) return;
     formPreviousFocus = document.activeElement;
@@ -65,57 +61,28 @@ export function bindInventoryKeys(list) {
         list.dataset.keyboardBound = 'true';
     }
 
-    const workbench = list.closest('.inventory-workbench');
-    if (!workbench || workbench._inventoryLayout) return;
-    const update = () => workbench.classList.toggle('is-narrow', !canShowInlineDetail(workbench));
-    const observer = new ResizeObserver(update);
-    observer.observe(workbench);
-    inlineDetailMedia.addEventListener('change', update);
-    shortCoarseMedia.addEventListener('change', update);
-    workbench._inventoryLayout = { observer, update };
-    update();
 }
 
 export function disposeInventoryLayout(list) {
-    const workbench = list?.closest('.inventory-workbench');
-    const layout = workbench?._inventoryLayout;
-    if (!layout) return;
-    layout.observer.disconnect();
-    inlineDetailMedia.removeEventListener('change', layout.update);
-    shortCoarseMedia.removeEventListener('change', layout.update);
-    delete workbench._inventoryLayout;
+    if (detailState?.list === list) closeDetail(detailState.panel, list);
 }
 
 export function openDetail(panel, list, callback) {
     if (!panel || !list) return;
-    if (detailState?.panel === panel) {
-        detailState.previousFocus = findSelectedTrigger(list) || detailState.previousFocus;
-        applyDetailMode();
-        return;
-    }
+    if (detailState?.panel === panel && panel.open) return;
     if (detailState) closeDetail(detailState.panel, detailState.list);
 
-    const workbench = list.closest('.inventory-workbench');
     const selectedTrigger = findSelectedTrigger(list);
     detailState = {
         panel,
         list,
-        workbench,
         callback,
-        overlay: false,
         previousFocus: selectedTrigger || document.activeElement,
+        equipmentId: selectedTrigger?.dataset.equipmentId,
         previousOverflow: document.body.style.overflow
     };
-    detailState.observer = new ResizeObserver(applyDetailMode);
-    if (workbench) detailState.observer.observe(workbench);
-    detailState.onChange = applyDetailMode;
     detailState.onKeyDown = event => {
-        if (!detailState?.overlay) return;
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            callback.invokeMethodAsync('OnDetailCancelAsync');
-            return;
-        }
+        if (event.target.closest('dialog') !== panel) return;
         if (event.key !== 'Tab') return;
         const focusable = [...panel.querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
             .filter(element => element.getClientRects().length);
@@ -134,10 +101,28 @@ export function openDetail(panel, list, callback) {
             first.focus();
         }
     };
-    inlineDetailMedia.addEventListener('change', detailState.onChange);
-    shortCoarseMedia.addEventListener('change', detailState.onChange);
+    detailState.onCancel = event => {
+        if (event.target !== panel) return;
+        event.preventDefault();
+        callback.invokeMethodAsync('OnDetailCancelAsync');
+    };
+    detailState.onClick = event => {
+        if (event.target !== panel) return;
+        const rect = panel.getBoundingClientRect();
+        if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)
+            callback.invokeMethodAsync('OnDetailCancelAsync');
+    };
+    detailState.updateViewport = () => panel.style.setProperty('--detail-viewport-height', `${window.visualViewport?.height ?? window.innerHeight}px`);
+    detailState.updateViewport();
+    window.visualViewport?.addEventListener('resize', detailState.updateViewport);
     panel.addEventListener('keydown', detailState.onKeyDown);
-    applyDetailMode();
+    panel.addEventListener('cancel', detailState.onCancel);
+    panel.addEventListener('click', detailState.onClick);
+    document.body.style.overflow = 'hidden';
+    if (!panel.open) panel.showModal();
+    const body = panel.querySelector('.inventory-workbench__detail-body');
+    if (body) body.scrollTop = 0;
+    panel.querySelector('.inventory-workbench__detail-close')?.focus();
 }
 
 function findSelectedTrigger(list) {
@@ -147,40 +132,17 @@ function findSelectedTrigger(list) {
 
 export function closeDetail(panel, list) {
     if (!detailState || detailState.panel !== panel) return;
-    detailState.observer.disconnect();
-    inlineDetailMedia.removeEventListener('change', detailState.onChange);
-    shortCoarseMedia.removeEventListener('change', detailState.onChange);
+    window.visualViewport?.removeEventListener('resize', detailState.updateViewport);
     panel.removeEventListener('keydown', detailState.onKeyDown);
-    releaseDetailOverlay(detailState);
-    const previousFocus = detailState.previousFocus;
+    panel.removeEventListener('cancel', detailState.onCancel);
+    panel.removeEventListener('click', detailState.onClick);
+    if (panel.open) panel.close();
+    document.body.style.overflow = detailState.previousOverflow ?? '';
+    const currentTrigger = [...list.querySelectorAll('[data-equipment-id]')]
+        .find(element => element.dataset.equipmentId === detailState.equipmentId && element.getClientRects().length);
+    const previousFocus = currentTrigger || detailState.previousFocus;
     detailState = undefined;
-    if (previousFocus?.isConnected) requestAnimationFrame(() => previousFocus.focus?.());
-}
-
-function applyDetailMode() {
-    if (!detailState) return;
-    const overlay = !canShowInlineDetail(detailState.workbench);
-    if (overlay && !detailState.overlay) {
-        detailState.overlay = true;
-        detailState.previousOverflow = document.body.style.overflow;
-        detailState.list.inert = true;
-        document.body.style.overflow = 'hidden';
-        requestAnimationFrame(() => detailState?.panel.querySelector('.inventory-workbench__detail-close')?.focus());
-    } else if (!overlay && detailState.overlay) {
-        releaseDetailOverlay(detailState);
-    }
-}
-
-function canShowInlineDetail(workbench) {
-    return !!workbench && inlineDetailMedia.matches && !shortCoarseMedia.matches &&
-        workbench.getBoundingClientRect().width >= inlineDetailWidth;
-}
-
-function releaseDetailOverlay(state) {
-    if (!state.overlay) return;
-    state.overlay = false;
-    state.list.inert = false;
-    document.body.style.overflow = state.previousOverflow ?? '';
+    if (previousFocus?.isConnected && previousFocus.getClientRects().length) requestAnimationFrame(() => previousFocus.focus?.());
 }
 
 export function confirmDiscard(message) {

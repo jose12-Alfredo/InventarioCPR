@@ -1,0 +1,68 @@
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<dialog class="equipment-photo-viewer" aria-labelledby="@titleId" @ref="dialog">
+    <header class="equipment-photo-viewer__header">
+        <div><h2 id="@titleId">Fotografía completa</h2><p>@name <span>Código: @equipmentCode</span></p></div>
+        <button type="button" class="btn btn-secondary" @onclick="CloseAsync">Cerrar imagen</button>
+    </header>
+    <div class="equipment-photo-viewer__stage" aria-busy="@(!loaded && !failed)">
+        @if (failed)
+        {
+            <div class="equipment-photo-viewer__error" role="alert"><p>No se pudo cargar la imagen. Compruebe su sesión y reintente.</p><button type="button" class="btn btn-secondary" @onclick="Retry">Reintentar imagen</button></div>
+        }
+        else if (url is not null)
+        {
+            @if (!loaded) { <p class="equipment-photo-viewer__loading" role="status">Cargando fotografía…</p> }
+            <img @key="attempt" src="@ImageUrl" alt="Fotografía completa de @name" @onload="() => loaded = true" @onerror="() => failed = true" />
+        }
+    </div>
+    <p class="equipment-photo-viewer__caption">@(failed ? "Puede cerrar la imagen para volver al detalle." : "Imagen completa, sin recortar. Ajustada a la pantalla.")</p>
+</dialog>
+
+@code {
+    private readonly string titleId = "full-photo-" + Guid.NewGuid().ToString("N");
+    private ElementReference dialog;
+    private IJSObjectReference? module;
+    private string? url, name, equipmentCode;
+    private bool openRequested, loaded, failed, disposed, focusCloseRequested;
+    private int attempt;
+    private string? ImageUrl => url is null ? null : $"{url}{(url.Contains('?') ? "&" : "?")}viewer={attempt}";
+
+    public Task OpenAsync(string contentUrl, string equipmentName, string assetCode)
+    {
+        url = contentUrl; name = equipmentName; equipmentCode = assetCode;
+        loaded = failed = false; attempt++; openRequested = true;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (disposed) return;
+        if (openRequested)
+        {
+            openRequested = false;
+            var imported = module ?? await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Inventory/EquipmentPhotoViewer.razor.js");
+            if (disposed) { await imported.DisposeAsync(); return; }
+            module = imported;
+            await module.InvokeVoidAsync("open", dialog);
+        }
+        if (focusCloseRequested && module is not null)
+        {
+            focusCloseRequested = false;
+            await module.InvokeVoidAsync("focusClose", dialog);
+        }
+    }
+
+    private void Retry() { failed = loaded = false; attempt++; focusCloseRequested = true; }
+    private async Task CloseAsync() { if (module is not null) await module.InvokeVoidAsync("close", dialog); }
+
+    public async ValueTask DisposeAsync()
+    {
+        disposed = true;
+        var active = module; module = null;
+        if (active is null) return;
+        try { await active.InvokeVoidAsync("close", dialog); await active.DisposeAsync(); }
+        catch (JSDisconnectedException) { }
+    }
+}

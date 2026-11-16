@@ -74,7 +74,7 @@
                             {
                                 var categoryKey = CategoryKey(row.Category);
                                 var isSelected = details?.Id == row.Id;
-                                <tr @key="row.Id" class="@(isSelected ? "is-selected" : null)" tabindex="0" aria-current="@(isSelected ? "true" : null)" aria-label="@row.Code, @row.Name. Abrir expediente" @onclick="() => OpenAsync(row.Id)" @onkeydown="e => HandleRowKeyDownAsync(e, row.Id)">
+                                <tr @key="row.Id" data-equipment-id="@row.Id" class="@(isSelected ? "is-selected" : null)" tabindex="0" aria-current="@(isSelected ? "true" : null)" aria-label="@row.Code, @row.Name. Abrir expediente" @onclick="() => OpenAsync(row.Id)" @onkeydown="e => HandleRowKeyDownAsync(e, row.Id)">
                                     <td>
                                         @if (PhotoAvailable(row.PhotoUrl)) { <img class="inventory-workbench__thumbnail" src="@row.PhotoUrl" alt="Fotografía de @row.Name" @onerror="() => MarkPhotoUnavailable(row.PhotoUrl)" /> }
                                         else { <span class="inventory-workbench__thumbnail inventory-workbench__thumbnail--@categoryKey" role="img" aria-label="Sin fotografía disponible"><AppIcon Name="@CategoryIcon(categoryKey)" /></span> }
@@ -95,7 +95,7 @@
                     {
                         var categoryKey = CategoryKey(row.Category);
                         <li @key="row.Id" class="@(details?.Id == row.Id ? "is-selected" : null)">
-                            <button type="button" class="inventory-workbench__card" disabled="@(!interactiveReady)" @onclick="() => OpenAsync(row.Id)" aria-label="Ver expediente de @row.Code, @row.Name">
+                            <button type="button" data-equipment-id="@row.Id" class="inventory-workbench__card" disabled="@(!interactiveReady)" @onclick="() => OpenAsync(row.Id)" aria-label="Ver expediente de @row.Code, @row.Name">
                                 @if (PhotoAvailable(row.PhotoUrl)) { <img class="inventory-workbench__thumbnail" src="@row.PhotoUrl" alt="" @onerror="() => MarkPhotoUnavailable(row.PhotoUrl)" /> }
                                 else { <span class="inventory-workbench__thumbnail inventory-workbench__thumbnail--@categoryKey" aria-hidden="true"><AppIcon Name="@CategoryIcon(categoryKey)" /></span> }
                                 <span class="inventory-workbench__card-copy"><span class="inventory-workbench__card-top"><strong title="@row.Code">@row.Code</strong><span title="@row.Category">@row.Category</span></span><b title="@row.Name">@row.Name</b><small title="@ModelLine(row)">@ModelLine(row)</small><span class="inventory-workbench__card-responsible"><small>Responsable</small> No disponible</span>@PrimaryConditionBadge(row.PhysicalCondition, row.OperationalCondition)</span>
@@ -111,36 +111,55 @@
             }
         </div>
 
-        <button type="button" class="inventory-workbench__detail-backdrop @(details is not null ? "is-visible" : null)" aria-label="Cerrar detalle del equipo" tabindex="-1" @onclick="BackToList"></button>
-        <aside role="region" class="inventory-workbench__detail @(details is not null ? "is-open" : null)" aria-label="Detalle del equipo" aria-labelledby="equipment-detail-title" tabindex="-1" @ref="detailPanel">
-            @if (details is null)
+        <dialog class="inventory-workbench__detail" aria-labelledby="equipment-detail-title" @ref="detailPanel">
+            @if (details is not null)
             {
-                <div class="inventory-workbench__detail-empty"><span><AppIcon Name="inventory" /></span><h3>Seleccione un equipo</h3><p>El expediente aparecerá aquí sin ocultar el listado.</p></div>
-            }
-            else
-            {
+                var detailPhotoUrl = details.PhotoUrl;
                 <header class="inventory-workbench__detail-header"><h2>Detalle del equipo</h2><button type="button" class="inventory-workbench__detail-close" aria-label="Cerrar detalle" @onclick="BackToList"><AppIcon Name="close" /></button></header>
-                @if (PhotoAvailable(details.PhotoUrl)) { <img class="inventory-workbench__detail-photo" src="@details.PhotoUrl" alt="Fotografía de @details.Input.Name" @onerror="() => MarkPhotoUnavailable(details.PhotoUrl)" /> }
-                else { <div class="inventory-workbench__detail-photo inventory-workbench__detail-photo--empty inventory-workbench__thumbnail--@selectedCategory" role="img" aria-label="Sin fotografía disponible"><AppIcon Name="@CategoryIcon(selectedCategory)" /><span>Sin fotografía registrada</span></div> }
-                <div class="inventory-workbench__detail-identity">
-                    <div><h3 id="equipment-detail-title">@details.Input.Name</h3><p><strong>Código:</strong> @details.Input.Code</p><small>@(details.Input.Model ?? details.Input.Brand ?? "Marca y modelo no registrados")</small></div>
-                    @PrimaryConditionBadge(details.Input.PhysicalCondition, details.Input.OperationalCondition)
-                </div>
-                <dl class="inventory-workbench__summary-facts">
-                    <div><dt>Categoría</dt><dd>@CategoryLabel</dd></div><div><dt>Marca</dt><dd>@(details.Input.Brand ?? "No registrada")</dd></div><div><dt>Modelo</dt><dd>@(details.Input.Model ?? "No registrado")</dd></div><div><dt>Número de serie</dt><dd>@(details.Input.Serial ?? "No registrado")</dd></div><div><dt>Ubicación actual</dt><dd>@(details.Input.Location ?? details.Input.Site ?? "No registrada")</dd></div><div><dt>Responsable</dt><dd>No disponible</dd></div>
-                </dl>
-                <p class="inventory-workbench__honest-note">Responsables y asignaciones aún no están habilitados.</p>
-                <div class="inventory-workbench__detail-action"><button type="button" class="btn btn-primary" title="@WriteRestriction" @onclick="OpenEditAsync" disabled="@(!interactiveReady || !canWrite)"><AppIcon Name="folder" /> Editar expediente</button></div>
-                <nav class="inventory-workbench__detail-tabs" aria-label="Secciones del expediente">@for (var i = 0; i < detailLabels.Length; i++) { var index = i; <button type="button" class="@(detailTab == index ? "is-active" : "")" aria-pressed="@(detailTab == index ? "true" : "false")" @onclick="() => detailTab = index">@DetailShortLabel(index)</button> }</nav>
-                <div class="inventory-workbench__detail-content">
-                    @if (detailTab == 0) { <h3>Información general</h3><div class="inventory-workbench__condition-summary"><div><span>Condición física</span>@ConditionBadge(null, details.Input.PhysicalCondition)</div><div><span>Condición operativa</span>@ConditionBadge(null, details.Input.OperationalCondition)</div></div> }
+                <div class="inventory-workbench__detail-body">
+                    <div class="inventory-workbench__detail-overview">
+                        @if (PhotoAvailable(details.PhotoUrl))
+                        {
+                            <button type="button" class="inventory-workbench__photo-open" aria-label="Ver imagen completa de @details.Input.Name" @onclick="OpenPrincipalPhotoAsync">
+                                <img class="inventory-workbench__detail-photo" src="@detailPhotoUrl" alt="Fotografía principal de @details.Input.Name" @onload="() => loadedPrincipalPhotos.Add(detailPhotoUrl!)" @onerror="() => MarkPhotoUnavailable(detailPhotoUrl)" />
+                                <span><AppIcon Name="search" /> @(loadedPrincipalPhotos.Contains(detailPhotoUrl!) ? "Ver imagen completa" : "Cargando fotografía…")</span>
+                            </button>
+                        }
+                        else
+                        {
+                            <div class="inventory-workbench__detail-photo inventory-workbench__detail-photo--empty">
+                                <AppIcon Name="@CategoryIcon(selectedCategory)" />
+                                <span>@(string.IsNullOrWhiteSpace(details.PhotoUrl) ? "Sin fotografía registrada" : "Fotografía no disponible")</span>
+                                @if (!string.IsNullOrWhiteSpace(details.PhotoUrl)) { <button type="button" class="btn btn-secondary" @onclick="RetryPrincipalPhoto">Reintentar foto</button> }
+                            </div>
+                        }
+                        <div class="inventory-workbench__detail-identity">
+                            <h3 id="equipment-detail-title">@details.Input.Name</h3>
+                            <p class="inventory-workbench__detail-code"><span>Código</span><strong>@details.Input.Code</strong></p>
+                            <p class="inventory-workbench__detail-category">@CategoryLabel</p>
+                            <div class="inventory-workbench__condition-summary"><div><span>Condición física</span>@ConditionBadge(null, details.Input.PhysicalCondition)</div><div><span>Condición operativa</span>@ConditionBadge(null, details.Input.OperationalCondition)</div></div>
+                        </div>
+                    </div>
+                    <nav class="inventory-workbench__detail-tabs" aria-label="Secciones del expediente">@for (var i = 0; i < detailLabels.Length; i++) { var index = i; <button type="button" class="@(detailTab == index ? "is-active" : "")" aria-pressed="@(detailTab == index ? "true" : "false")" @onclick="() => detailTab = index">@DetailShortLabel(index)</button> }</nav>
+                    <div class="inventory-workbench__detail-content">
+                    @if (detailTab == 0)
+                    {
+                        <h3>Identificación</h3>
+                        <dl class="inventory-workbench__summary-facts"><div><dt>Marca</dt><dd>@(details.Input.Brand ?? "No registrada")</dd></div><div><dt>Modelo</dt><dd>@(details.Input.Model ?? "No registrado")</dd></div><div><dt>Número de serie</dt><dd>@(details.Input.Serial ?? "No registrado")</dd></div></dl>
+                        <h3>Ubicación y responsable</h3>
+                        <dl class="inventory-workbench__summary-facts"><div><dt>Sede</dt><dd>@(details.Input.Site ?? "No registrada")</dd></div><div><dt>Ubicación actual</dt><dd>@(details.Input.Location ?? "No registrada")</dd></div><div><dt>Responsable</dt><dd>No disponible</dd></div></dl>
+                        <p class="inventory-workbench__honest-note">Responsables y asignaciones aún no están habilitados.</p>
+                    }
                     else if (detailTab == 1) { <h3>Características técnicas</h3><dl class="inventory-workbench__facts"><div><dt>Procesador</dt><dd>@(details.Input.ProcessorName ?? details.Input.ProcessorModel ?? "No registrado")</dd></div><div><dt>RAM total</dt><dd>@FormatCapacity(details.Input.TotalRamGb)</dd></div><div><dt>Módulos de RAM</dt><dd>@(details.Input.RamModules.Count == 0 ? "Sin detalle" : string.Join(" + ", details.Input.RamModules.Select(x => FormatCapacity(x.CapacityGb))))</dd></div><div><dt>Sistema operativo</dt><dd>@(details.Input.OperatingSystem ?? "No registrado")</dd></div></dl> }
                     else if (detailTab == 2) { <h3>Condición y ubicación</h3><dl class="inventory-workbench__facts"><div><dt>Sede</dt><dd>@(details.Input.Site ?? "No registrada")</dd></div><div><dt>Ubicación física</dt><dd>@(details.Input.Location ?? "No registrada")</dd></div><div><dt>Última persona que verificó</dt><dd>@(details.Input.Verifier ?? "Sin verificación")</dd></div></dl> }
                     else if (detailTab == 3) { <h3>Historial técnico</h3>@if (details.History.Count == 0) { <p>No hay revisiones ni observaciones registradas.</p> } else { <ul class="inventory-workbench__history">@foreach (var entry in details.History) { <li>@entry</li> }</ul> } }
                     else { <EquipmentPhotos @key="details.Id" EquipmentId="details.Id" Changed="PhotosChangedAsync" /> }
+                    </div>
                 </div>
+                <footer class="inventory-workbench__detail-footer"><button type="button" class="btn btn-secondary" @onclick="BackToList">Cerrar</button><button type="button" class="btn btn-primary" title="@WriteRestriction" @onclick="OpenEditAsync" disabled="@(!interactiveReady || !canWrite)"><AppIcon Name="folder" /> Editar expediente</button></footer>
+                <EquipmentPhotoViewer @ref="principalViewer" />
             }
-        </aside>
+        </dialog>
     </div>
 
     <dialog @ref="formDialog" class="technical-preview @(quick ? "technical-preview--quick" : "")" aria-labelledby="technical-preview-title" aria-describedby="form-summary">
@@ -461,10 +480,12 @@
 
 @code {
     private static readonly string[] tabLabels = ["Identificación", "Características técnicas", "Control y fotografías"];
-    private static readonly string[] detailLabels = ["Información general", "Características técnicas", "Condición y ubicación", "Historial técnico", "Evidencias"];
+    private static readonly string[] detailLabels = ["Información general", "Características técnicas", "Condición y ubicación", "Historial técnico", "Fotografías"];
     private ElementReference formDialog;
     private ElementReference listPanel;
     private ElementReference detailPanel;
+    private EquipmentPhotoViewer? principalViewer;
+    private readonly HashSet<string> loadedPrincipalPhotos = [];
     private bool canWrite;
     private bool interactiveReady;
     private IJSObjectReference? uiModule;
@@ -531,6 +552,11 @@
             await uiModule.InvokeVoidAsync("bindInventoryKeys", listPanel);
             await InvokeAsync(StateHasChanged);
         }
+        if (detailCloseRequested && uiModule is not null)
+        {
+            await uiModule.InvokeVoidAsync("closeDetail", detailPanel, listPanel);
+            detailCloseRequested = false;
+        }
         if (openRequested)
         {
             uiModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Inventory/TechnicalFormPreview.razor.js");
@@ -559,11 +585,6 @@
             dotNetRef ??= DotNetObjectReference.Create(this);
             await uiModule.InvokeVoidAsync("openDetail", detailPanel, listPanel, dotNetRef);
             detailOpenRequested = false;
-        }
-        if (detailCloseRequested && uiModule is not null)
-        {
-            await uiModule.InvokeVoidAsync("closeDetail", detailPanel, listPanel);
-            detailCloseRequested = false;
         }
     }
 
@@ -633,12 +654,25 @@
         if (details is null) return;
         await OpenAsync(details.Id);
         if (error is not null) return;
+        detailOpenRequested = false;
+        detailCloseRequested = true;
         quick = false;
         activeTab = 0;
         dirty = false;
         error = success = null;
         openRequested = true;
         await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OpenPrincipalPhotoAsync()
+    {
+        if (principalViewer is not null && details?.PhotoUrl is { } url && PhotoAvailable(url))
+            await principalViewer.OpenAsync(url, details.Input.Name, details.Input.Code);
+    }
+
+    private void RetryPrincipalPhoto()
+    {
+        if (details?.PhotoUrl is { } url) { failedPhotos.Remove(url); loadedPrincipalPhotos.Remove(url); }
     }
 
     private async Task PhotosChangedAsync()
@@ -794,7 +828,7 @@
         1 => "Técnica",
         2 => "Control",
         3 => "Historial",
-        _ => "Evidencias"
+        _ => "Fotografías"
     };
 
     private static RenderFragment ConditionBadge(string? label, string? condition) => builder =>

@@ -220,15 +220,16 @@ La paleta CPR usa violeta para identidad y seleccion, naranja para hitos puntual
 
 El shell usa sidebar fija en escritorio, topbar persistente y un lienzo central limitado a 88rem. El contenido aplica separaciones fluidas entre 2rem y 4rem. Inicio puede usar una composicion asimetrica; los modulos operativos priorizan paneles de ancho completo y rejillas alineadas.
 
-Los cortes son guiados por el contenido: el master-detail se convierte en panel desplegable antes de que la tabla pierda legibilidad; las rejillas secundarias se apilan despues. A 48rem, la sidebar se reemplaza por un menu movil nativo con `details` y la tabla de inventario se transforma en tarjetas. En los telefonos mas estrechos, filtros, formularios y acciones ocupan una sola columna cuando dos columnas ya no conservan etiquetas completas.
+Los cortes son guiados por el contenido. En inventario, el listado mantiene todo su espacio y el expediente se abre en una ventana modal amplia y centrada en escritorio y tablet, con foto e identidad lado a lado. En celular, el detalle ocupa la pantalla completa, con cabecera y acciones persistentes y un cuerpo desplazable. El listado cambia de tabla a tarjetas segun el ancho disponible de su contenedor; no reserva una columna para el detalle. A 48rem, la sidebar se reemplaza por un menu movil nativo con `details`. En los telefonos mas estrechos, filtros, formularios y acciones ocupan una sola columna cuando dos columnas ya no conservan etiquetas completas.
 
 ### Regla responsive e Impeccable
 
 "Todo desarrollo o modificación visual de InventarioCPR debe diseñarse de forma responsive para computadora, tablet y celular. El agente debe consultar y aplicar la skill Impeccable disponible, ejecutar las verificaciones pertinentes y validar visualmente el resultado antes de declarar terminada la tarea".
 
-- Escritorio prioriza tabla, filtros horizontales y master-detail cuando el contenido conserva legibilidad.
-- Tablet adapta la tabla y presenta el detalle como panel desplegable con controles tactiles de al menos 44x44 px.
-- Celular transforma tablas en tarjetas, usa detalle a pantalla completa y formularios por pasos sin desplazamiento horizontal.
+- En inventario, escritorio prioriza tabla y filtros horizontales; el detalle usa una ventana centrada independiente del ancho del listado.
+- Tablet adapta el listado y conserva la ventana amplia de detalle con controles tactiles de al menos 44x44 px.
+- Celular transforma tablas en tarjetas, usa detalle modal a pantalla completa y formularios por pasos sin desplazamiento horizontal.
+- La principal del detalle se muestra sin recorte y abre con clic o teclado un segundo dialogo para verla completa. Cerrar la imagen restaura foco y contexto del expediente; Escape no debe cerrar ambos dialogos.
 - Toda entrega visual se revisa a 360x800, 390x844, 768x1024, 1024x768, 1440x900 y 1920x1080, incluyendo carga, vacio, error, foco, teclado y controles principales.
 - Las fotografias reales conservan su proporcion; cuando no existen, se utiliza el placeholder aprobado por categoria sin fabricar evidencia.
 - La adaptacion visual nunca justifica modificar datos, persistencia o reglas empresariales.

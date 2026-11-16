@@ -2,7 +2,15 @@
 
 Última actualización: 2026-11-13
 
-## Bloqueo actual de publicación y corrección preparada
+## UI actual: detalle amplio y fotografía completa, publicación autorizada
+
+- Usuario pidió abrir foto principal con clic y rediseñar detalle; eligió expresamente Ventana amplia mediante pregunta estructurada. Implementado localmente: diálogo nativo centrado hasta 70rem, foto/identidad en dos columnas y móvil a pantalla completa; cabecera y pie persistentes, secciones y botón Fotografías.
+- EquipmentPhotoViewer nuevo abre imagen privada completa sin recorte (contain), con carga/error/reintento, Escape independiente y retorno de foco/scroll. Gallery original conservada; editar/cancelar mantiene la ficha. Se usa ID factual del equipo para restaurar foco incluso tras refrescar filas o pasar a tarjetas móviles.
+- Validación final: 19 capturas/checks (ocho tamaños overview/visor + vacío/vertical/error), Axe 0, sin errores de página ni peticiones de mutación; tacto sintetizado aprobado, foco tras refresh/resize aprobado, suite 54 aprobadas/21 omitidas/0 fallidas. Revisor independiente disposition ship, sin correcciones materiales; documentador verificó compatibilidad con sistema existente y se actualizó solo prosa Layout de DESIGN.md. Detector final []. No tokens, datos, permisos, migraciones o Data Protection modificados.
+- Fuente vigente: DETAIL_VIEW_VALIDATION.md y .impeccable/surfaces/inventory-equipment-detail.md. Los archivos de captura son ignorados .impeccable/review/detail-wide-*; no hay rasters nuevos que se publiquen en el producto. El usuario autorizó commit/push al solicitar «publicalos». Verificar la nueva versión en Render tras subirla, sin nuevas migraciones ni configuración Data Protection.
+- Render ya sirve la versión de registro nueva (healthz 204, confirmDiscard(message) presente), por lo que el bloqueo de configuración de la sección histórica siguiente está resuelto. El marcador de detalle amplio (panel.showModal()) aún no aparece públicamente: este cambio visual es local. No repetir importación de secretos ni generar certificados para esta mejora de UI.
+
+## Historial: bloqueo inicial de publicación y corrección preparada
 
 - El usuario autorizó commit/push/despliegue. Publicación inicial 6705a08 en main confirmada en origin. Render falló: InvalidOperationException por faltar DataProtection:UseDatabase=true/certificado, y continúa mostrando los assets anteriores. No afirmar que la nueva versión está Live ni que la foto ya es obligatoria en esa pantalla antigua.
 - El usuario está dentro del dashboard en su navegador normal; el acceso Google desde Chrome automatizado fue rechazado. No intentar evadir ese control, extraer cookies personales ni solicitar contraseñas por chat.
