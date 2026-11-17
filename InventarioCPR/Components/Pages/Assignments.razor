@@ -1,0 +1,148 @@
+@page "/asignaciones"
+@rendermode InteractiveServer
+@using InventarioCPR.Application.Assignments
+@using InventarioCPR.Application.Inventory
+@using InventarioCPR.Infrastructure.Persistence.Models
+@using InventarioCPR.Components.Assignments
+@inject AssignmentService Service
+@inject InventoryService Inventory
+
+<PageTitle>Asignaciones | InventarioCPR</PageTitle>
+<div class="page-heading"><div><h1>Asignaciones</h1><p>Custodias, empresas y personal. La disponibilidad se calcula desde las asignaciones registradas.</p></div></div>
+<div class="assignments-page">
+    <nav class="assignments-page__tabs" aria-label="Vistas del módulo"><button class="btn btn-secondary" aria-pressed="@(!catalogs ? "true" : "false")" @onclick="() => catalogs = false">Operaciones e historial</button><button class="btn btn-secondary" aria-pressed="@(catalogs ? "true" : "false")" @onclick="() => catalogs = true">Empresas, personal y áreas</button><a class="btn btn-secondary" href="inventario">Volver al inventario</a></nav>
+    @if (catalogs) { <DirectoryEditor Changed="ReloadOptionsAsync" /> }
+    else
+    {
+        <div class="assignments-page__finder" role="search" aria-label="Seleccionar equipo">
+            <div class="field"><label for="assignment-search">Buscar equipo definitivo</label><input id="assignment-search" type="search" @bind="equipmentSearch" placeholder="Código o nombre" /></div>
+            <button class="btn btn-secondary" @onclick="SearchEquipmentAsync">Buscar</button>
+            <div class="field"><label for="assignment-equipment">Equipo</label><select id="assignment-equipment" @bind="selectedEquipment" @bind:after="LoadSelectedAsync"><option value="">Seleccione un equipo</option>@foreach (var e in equipmentOptions) { <option value="@e.Id">@e.Name</option> }</select></div>
+        </div>
+        @if (error is not null) { <p class="assignments-page__error" role="alert" tabindex="-1">@error</p> }
+        @if (message is not null) { <p class="assignments-page__success" role="status">@message</p> }
+        @if (summary is null) { <p>Seleccione un equipo para consultar su custodia o registrar una operación. Los borradores se finalizan desde Inventario.</p> }
+        else
+        {
+            <section class="assignments-page__current" aria-label="Custodia actual">
+                <div class="assignments-page__current-title"><h2>@equipmentTitle</h2><span class="availability-badge @(summary.CustodyId is null ? "availability-badge--free" : "availability-badge--occupied")">@(summary.CustodyId is null ? "Libre" : "Ocupado")</span><button class="btn btn-secondary" disabled="@busy" @onclick="LoadSelectedAsync">Actualizar</button></div>
+                <dl><div><dt>Responsable actual</dt><dd>@(summary.Worker ?? "Sin asignar")</dd></div><div><dt>Área actual del trabajador</dt><dd>@(summary.WorkerArea ?? "No registrada")</dd></div><div><dt>Empresa propietaria</dt><dd>@(summary.OwnerCompany ?? "No registrada")</dd></div><div><dt>Empresa usuaria</dt><dd>@(summary.UsingCompany ?? "No registrada")</dd></div><div><dt>Área administrativa del activo</dt><dd>@(summary.OwnerArea ?? "No registrada")</dd></div><div><dt>Entrega / confirmación digital</dt><dd>@(summary.AssignedAtUtc?.ToString("yyyy-MM-dd HH:mm") is { } stamp ? stamp + " UTC" : "Sin asignación activa")</dd></div></dl>
+                @if (summary.Office is not null) { <p>Oficina de custodia compartida: <strong>@summary.Office</strong></p> }
+                <p>Condición operativa registrada: <strong>@(operationalCondition ?? "No registrada")</strong>. Libre no significa automáticamente apto para entrega.</p>
+                @if (summary.NeedsReconciliation) { <p class="assignments-page__notice">Conciliación inicial pendiente. Libre/Ocupado refleja las asignaciones registradas, no una comprobación física completa.</p> }
+            </section>
+            <details class="assignments-page__classification"><summary>Clasificar empresa propietaria, empresa usuaria y área del activo</summary>
+                <form @onsubmit="SaveClassificationAsync" @onsubmit:preventDefault><fieldset disabled="@(!canWrite || busy)">
+                    <div class="assignments-page__fields">
+                        <div class="field"><label for="asset-owner-company">Empresa propietaria</label><select id="asset-owner-company" @bind="ownerCompany"><option value="">No registrada</option>@foreach (var option in companies) { <option value="@option.Id">@option.Name @(option.Active ? "" : "(inactiva)")</option> }</select></div>
+                        <div class="field"><label for="asset-using-company">Empresa usuaria (independiente)</label><select id="asset-using-company" @bind="usingCompany"><option value="">No registrada</option>@foreach (var option in companies) { <option value="@option.Id">@option.Name @(option.Active ? "" : "(inactiva)")</option> }</select></div>
+                        <div class="field"><label for="asset-owner-area">Área administrativa del activo</label><select id="asset-owner-area" @bind="ownerArea"><option value="">No registrada</option>@foreach (var option in areas) { <option value="@option.Id">@option.Name · @option.Context @(option.Active ? "" : "(inactiva)")</option> }</select></div>
+                    </div>
+                    <p>Cambiar la empresa usuaria no cambia el propietario, el responsable o la ubicación. No se interpreta como un acto legal de transmisión.</p>
+                    <div class="field"><label for="classification-note">Observación del cambio (opcional)</label><textarea id="classification-note" rows="2" maxlength="4000" @bind="classificationNote"></textarea></div>
+                    <button class="btn btn-primary" type="submit">Guardar clasificación</button>
+                </fieldset></form>
+            </details>
+            <section aria-label="Operar custodia">
+                <h2>Gestionar custodia</h2>
+                <div class="assignments-page__actions">
+                    @if (summary.CustodyId is null)
+                    {
+                        <button class="btn btn-primary" disabled="@(!canWrite || busy)" @onclick="() => Begin(CustodyAction.Assign)">Asignar</button>
+                        @if (summary.NeedsReconciliation) { <button class="btn btn-secondary" disabled="@(!canWrite || busy)" @onclick="() => Begin(CustodyAction.ReconcileAssigned)">Conciliar custodia existente</button><button class="btn btn-secondary" disabled="@(!canWrite || busy)" @onclick="() => Begin(CustodyAction.ReconcileFree)">Confirmar libre físicamente</button> }
+                    }
+                    else { <button class="btn btn-primary" disabled="@(!canWrite || busy)" @onclick="() => Begin(CustodyAction.Transfer)">Transferir</button><button class="btn btn-secondary" disabled="@(!canWrite || busy)" @onclick="() => Begin(CustodyAction.Return)">Liberar / registrar devolución</button> }
+                </div>
+                @if (!canWrite) { <p>Su perfil permite consultar, no registrar asignaciones ni cambios.</p> }
+                @if (action is { } selectedAction)
+                {
+                    <form class="assignments-page__command" @onsubmit="ExecuteAsync" @onsubmit:preventDefault><fieldset disabled="@busy">
+                        <legend>@AssignmentHistory.ActionLabel(selectedAction.ToString())</legend>
+                        @if (selectedAction is CustodyAction.Assign or CustodyAction.Transfer or CustodyAction.ReconcileAssigned)
+                        {
+                            <div class="assignments-page__worker-search"><div class="field"><label for="worker-search">Buscar trabajador habilitado</label><input id="worker-search" type="search" @bind="workerSearch" /></div><button type="button" class="btn btn-secondary" @onclick="FindWorkersAsync">Buscar trabajador</button></div>
+                            <div class="assignments-page__fields">
+                                <div class="field"><label for="custody-worker">Trabajador responsable / custodio principal</label><select id="custody-worker" required @bind="workerId"><option value="">Seleccione un trabajador</option>@foreach (var worker in workers) { <option value="@worker.Id">@worker.Name · @worker.Context · @worker.Id.ToString("N")[..8]</option> }</select></div>
+                                <div class="field"><label for="custody-kind">Modalidad</label><select id="custody-kind" @bind="custodyKind"><option value="Individual">Individual</option><option value="SharedOffice">Compartido en oficina</option></select></div>
+                                @if (custodyKind == CustodyKind.SharedOffice) { <div class="field"><label for="custody-office">Oficina / ubicación física compartida</label><select id="custody-office" required @bind="officeId"><option value="">Seleccione oficina</option>@foreach (var office in offices) { <option value="@office.Id">@office.Name · @office.Context</option> }</select></div> }
+                            </div>
+                            <p>El área del trabajador se obtiene de su ficha. No sustituye el área administrativa del activo.</p>
+                        }
+                        @if (selectedAction is CustodyAction.ReconcileAssigned or CustodyAction.ReconcileFree)
+                        {
+                            <p class="assignments-page__notice">Se registra la confirmación digital de ahora; no se inventa una fecha de entrega antigua.</p>
+                            @if (selectedAction == CustodyAction.ReconcileAssigned) { <label class="assignments-page__check"><input type="checkbox" @bind="originalKnown" /> Conozco la fecha original de entrega</label>@if (originalKnown) { <div class="field"><label for="custody-original">Fecha original conocida (UTC)</label><input id="custody-original" type="datetime-local" @bind="originalDate" /></div> } }
+                        }
+                        else { <div class="field"><label for="custody-effective">Fecha y hora efectiva (UTC)</label><input id="custody-effective" type="datetime-local" required @bind="effectiveDate" /></div> }
+                        @if (selectedAction is CustodyAction.Assign or CustodyAction.Transfer or CustodyAction.Return)
+                        {
+                            <div class="field"><label for="custody-inspector">Persona que comprobó las condiciones</label><select id="custody-inspector" required @bind="inspectorId"><option value="">Seleccione la persona que inspeccionó</option>@foreach(var inspector in inspectors){<option value="@inspector.Id">@inspector.Name · @inspector.Id.ToString("N")[..8]</option>}</select></div>
+                            <p>Registre lo observado en este movimiento. No se copian automáticamente las condiciones anteriores.</p>
+                            @if(selectedAction is CustodyAction.Transfer or CustodyAction.Return)
+                            {
+                                <div class="assignments-page__fields"><div class="field"><label for="custody-return-physical">Condición física al recibir</label><input id="custody-return-physical" required maxlength="100" @bind="returnPhysical" /></div><div class="field"><label for="custody-return-operational">Condición operativa al recibir</label><input id="custody-return-operational" required maxlength="100" @bind="returnOperational" /></div></div>
+                            }
+                            @if(selectedAction is CustodyAction.Assign or CustodyAction.Transfer)
+                            {
+                                <div class="assignments-page__fields"><div class="field"><label for="custody-delivery-physical">Condición física al entregar</label><input id="custody-delivery-physical" required maxlength="100" @bind="deliveryPhysical" /></div><div class="field"><label for="custody-delivery-operational">Condición operativa al entregar</label><input id="custody-delivery-operational" required maxlength="100" @bind="deliveryOperational" /></div></div>
+                            }
+                        }
+                        <div class="field"><label for="custody-note">Observación (opcional)</label><textarea id="custody-note" rows="3" maxlength="4000" @bind="note"></textarea></div>
+                        <div class="assignments-page__actions"><button type="submit" class="btn btn-primary">@(busy ? "Registrando…" : "Confirmar operación")</button><button type="button" class="btn btn-secondary" @onclick="() => action = null">Cancelar operación</button></div>
+                    </fieldset></form>
+                }
+            </section>
+            <AssignmentHistory Summary="summary" />
+            <nav class="assignments-page__actions" aria-label="Páginas del historial"><button class="btn btn-secondary" disabled="@(historyPage==0||busy)" @onclick="() => HistoryPageAsync(-1)">Anterior</button><span>Página @(historyPage+1)</span><button class="btn btn-secondary" disabled="@(!summary.HasMoreHistory||busy)" @onclick="() => HistoryPageAsync(1)">Siguiente</button></nav>
+        }
+    }
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name="equipo")] public Guid? EquipmentId { get; set; }
+    private Guid? selectedEquipment, workerId, officeId, ownerCompany, usingCompany, ownerArea,inspectorId;
+    private IReadOnlyList<DirectoryOption> equipmentOptions=[], companies=[], areas=[], workers=[], offices=[],inspectors=[];
+    private AssignmentSummary? summary;
+    private CustodyAction? action;
+    private CustodyKind custodyKind;
+    private Guid commandRequest=Guid.NewGuid(), classificationRequest=Guid.NewGuid();
+    private string equipmentSearch="", workerSearch="", equipmentTitle="";
+    private string? error,message,note,classificationNote,operationalCondition,deliveryPhysical,deliveryOperational,returnPhysical,returnOperational;
+    private DateTime effectiveDate=DateTime.UtcNow, originalDate=DateTime.UtcNow;
+    private bool canWrite,busy,catalogs,originalKnown;
+    private int historyPage;
+    private Guid? loadedQuery;
+    protected override async Task OnInitializedAsync(){canWrite=await Service.CanWriteAsync();await ReloadOptionsAsync();await SearchEquipmentAsync();}
+    protected override async Task OnParametersSetAsync(){if(EquipmentId is{} id&&loadedQuery!=id){loadedQuery=id;selectedEquipment=id;await LoadSelectedAsync();}}
+    private async Task ReloadOptionsAsync(){try{companies=await Service.OptionsAsync(DirectoryKind.Company,true);areas=await Service.OptionsAsync(DirectoryKind.Area,true);offices=await Service.OptionsAsync(DirectoryKind.Location);inspectors=await Service.InspectorOptionsAsync();await FindWorkersAsync();}catch{error="Módulo no disponible: revise conexión y migración de asignaciones.";}}
+    private async Task SearchEquipmentAsync(){try{equipmentOptions=await Service.EquipmentOptionsAsync(equipmentSearch);}catch{error="No se pudieron consultar equipos definitivos.";}}
+    private async Task FindWorkersAsync(){workers=await Service.OptionsAsync(DirectoryKind.Worker,false,workerSearch);}
+    private async Task LoadSelectedAsync()
+    {
+        action=null;historyPage=0;commandRequest=Guid.NewGuid();classificationRequest=Guid.NewGuid();error=message=null;
+        if(selectedEquipment is not{} id){summary=null;return;}
+        try{
+            summary=await Service.SummaryAsync(id);var details=await Inventory.GetAsync(id);
+            if(summary is null||details is null||details.IsDraft){summary=null;error="Seleccione un equipo definitivo.";return;}
+            equipmentTitle=details.Input.Code+" · "+details.Input.Name;
+            operationalCondition=details.Input.OperationalCondition;
+            if(!equipmentOptions.Any(x=>x.Id==id))equipmentOptions=equipmentOptions.Append(new DirectoryOption(id,equipmentTitle,true)).ToList();
+            ownerCompany=summary.OwnerCompanyId;usingCompany=summary.UsingCompanyId;ownerArea=summary.OwnerAreaId;
+        }catch{summary=null;error="No se pudo recuperar la custodia. Compruebe la conexión y la migración.";}
+    }
+    private void Begin(CustodyAction value){action=value;commandRequest=Guid.NewGuid();workerId=officeId=inspectorId=null;custodyKind=CustodyKind.Individual;effectiveDate=DateTime.UtcNow;originalKnown=false;note=null;error=message=null;deliveryPhysical=deliveryOperational=returnPhysical=returnOperational=null;}
+    private static DateTimeOffset Utc(DateTime date)=>new(DateTime.SpecifyKind(date,DateTimeKind.Utc));
+    private async Task SaveClassificationAsync()
+    {
+        if(busy||!canWrite||summary is null)return;busy=true;error=message=null;
+        try{await Service.ClassifyAsync(new(classificationRequest,summary.EquipmentId,summary.Revision,ownerCompany,usingCompany,ownerArea,classificationNote));await LoadSelectedAsync();message="Clasificación guardada. Custodia y ubicación no cambiaron.";}
+        catch(InventoryValidationException ex){error=ex.Message;}catch(UnauthorizedAccessException){error="Su sesión no permite esta operación.";}catch{error="No se confirmó la clasificación. Reintente la misma solicitud antes de iniciar otra.";}finally{busy=false;}
+    }
+    private async Task ExecuteAsync()
+    {
+        if(busy||!canWrite||summary is null||action is not{} value)return;busy=true;error=message=null;
+        try{await Service.ExecuteAsync(new(commandRequest,summary.EquipmentId,summary.Revision,summary.CustodyId,value,workerId,custodyKind,officeId,Utc(effectiveDate),note,originalKnown?Utc(originalDate):null,inspectorId,deliveryPhysical,deliveryOperational,returnPhysical,returnOperational));await LoadSelectedAsync();message="Operación registrada. Disponibilidad e historial actualizados.";}
+        catch(InventoryValidationException ex){error=ex.Message;}catch(UnauthorizedAccessException){error="Su sesión no permite esta operación.";}catch{error="No se confirmó la operación. Conserve los datos y reintente; no se duplicarán movimientos.";}finally{busy=false;}
+    }
+    private async Task HistoryPageAsync(int delta){if(summary is null)return;historyPage=Math.Max(0,historyPage+delta);summary=await Service.SummaryAsync(summary.EquipmentId,historyPage);}
+}

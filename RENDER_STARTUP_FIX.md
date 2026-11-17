@@ -1,4 +1,6 @@
-# Activación pendiente de Render — 13 de noviembre de 2026
+# Incidente histórico de configuración Render — 13 de noviembre de 2026
+
+**Actualización 2026-11-17:** C definitivo ya existe, A/B están custodiados y la URL pública responde healthz204/login200/bootBlazor200. El usuario realizó la importación de configuración en una fase anterior; esta auditoría no accedió al dashboard para recertificar sus valores efectivos. Las instrucciones originales siguientes documentan el incidente, **no una orden pendiente de volver a importar o desplegar**. La actualización actual y la comprobación previa de variables están en `DEPLOYMENT.md` y `RELEASE_READINESS.md`. No generar otro certificado por rutina.
 
 El código fue subido a `main` (publicación inicial `6705a08`), pero el nuevo despliegue rechazó el arranque con `InvalidOperationException: Render requiere DataProtection:UseDatabase=true y certificado de protección`. Render mantiene sirviendo la versión anterior. Un push no configura los secretos del servicio.
 
@@ -14,7 +16,7 @@ El certificado definitivo nuevo es RSA 3072, exclusivo de protección de claves 
 
 Validación realizada: carga del certificado con privada, cifrado/descifrado entre proveedores nuevos sobre un llavero temporal local y lectura/descifrado de las **dos claves históricas de Neon** con los certificados de lectura. Conexión de prueba confirmada por ID/endpoint; no hay migraciones Data Protection pendientes. **Cero escrituras remotas de claves**, ninguna contraseña existente cambiada. No se retiró el rechazo de arranque ante configuración incompleta.
 
-## Acción manual necesaria en el panel
+## Acción manual original del incidente (solo si la comparación actual detecta faltantes)
 
 1. Abrir Render en el navegador normal, servicio **InventarioCPR → Environment → Add from .env**.
 2. Importar el archivo privado indicado. Si el diálogo pide texto, abrirlo localmente y pegar su contenido solo en ese diálogo de Render. No copiarlo al repositorio ni al chat.

@@ -1,6 +1,14 @@
 # Rotación de credenciales — procedimiento pendiente de autorización
 
-No se han cambiado contraseñas ni claves reales. No introducir secretos en chat, comandos que queden en historial, commits, capturas o logs. Realizar las acciones manuales antes de actualizar públicamente Render. Preparar acceso al dashboard de Neon, Render y Cloudinary y un gestor de contraseñas; no se necesitan nuevas credenciales para las pruebas automatizadas locales.
+Esta preparación no cambió contraseñas ni claves reales; el reset Identity histórico se distingue en el estado siguiente. No introducir secretos en chat, comandos que queden en historial, commits, capturas o logs. Preparar acceso al dashboard de Neon, Render y Cloudinary y un gestor de contraseñas; las rotaciones pendientes se acuerdan antes de actualizar públicamente Render y no se necesitan nuevas credenciales para pruebas automatizadas locales.
+
+## Estado actualizado — 2026-11-17
+
+- **Neon:** existe antecedente de contraseña expuesta y no hay evidencia documentada de su rotación posterior. Sigue pendiente identificar el rol/consumidores y autorizar la transición. Si el rol se comparte con production, detener el cambio hasta acordar un alcance que no la afecte; esta tarea no autoriza ese impacto.
+- **Identity:** la contraseña expuesta antigua **ya se sustituyó** mediante UserManager y se verificó login por usuario/correo; ver SECURITY.md. La auditoría actual no cambia hash/stamp y confirma ausencia local de secretos de bootstrap/reset. Confirmar custodia de la vigente; solo repetir el procedimiento siguiente si se detecta nueva exposición o se autoriza otro reset.
+- **Cloudinary:** validar inventario de consumidores y si hubo exposición de las claves vigentes. No se afirma una rotación ya completada ni una exposición nueva demostrada. Si se requiere rotar, coordinar la coexistencia/revocación y probar lectura privada sin cambiar imágenes.
+- **Data Protection:** C definitivo ya existe y está vigente hasta 2028-11-13; A/B históricos son necesarios para descifrar las dos claves actuales. No rotar ni retirar certificados como sustituto de rotar la contraseña PostgreSQL. No volver a generar C por rutina.
+- Ninguna variable, contraseña, API key, certificado o credencial de Render/Neon/Cloudinary se modificó en esta preparación. La actualización segura de secretos exige intervención del titular en los dashboards y autorización de alcance.
 
 ## 1. Administrador Identity
 
@@ -28,4 +36,4 @@ No se han cambiado contraseñas ni claves reales. No introducir secretos en chat
 
 ## Orden antes de la actualización pública
 
-Respaldos y accesos de recuperación → autorización del destino → credenciales PostgreSQL y consumidores → Cloudinary y consumidores → contraseña Identity y validación de stamp → certificado definitivo/migración Data Protection autorizada → activación local/aislada → publicación autorizada y comprobación Render. Registrar solo fecha, entorno, responsable y resultado; nunca valores secretos.
+Respaldos y accesos de recuperación → confirmación del destino y rol/consumidores → rotación PostgreSQL expuesta → Cloudinary si corresponde → confirmar contraseña Identity vigente (reset solo si procede) → verificar C+A/B y llavero existentes, sin repetir migraciones → actualización autorizada de consumidores → publicación autorizada y comprobación Render. Registrar fecha, entorno, responsable y resultado; nunca valores secretos. Para revertir, conservar credenciales seguras vigentes o generar otra sustitución autorizada; no volver a habilitar las expuestas.

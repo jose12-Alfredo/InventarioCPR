@@ -1,5 +1,19 @@
 # Reglas de negocio - InventarioCPR
 
+## Decisión vigente — empresas y asignaciones (2026-11-16)
+
+El usuario aprobó implementar esta fase y posteriormente validarla con Neon real. RN-118 a RN-122 y el modelo de disponibilidad de dos estados de esta revisión sustituyen propuestas anteriores incompatibles. Implementación en `ASSIGNMENTS.md`; migración aplicada el 17 de noviembre exclusivamente a `test-migracion-inicial`, con evidencia en `ASSIGNMENTS_NEON_VALIDATION.md`. La confirmación de las denominaciones CPRSA/DMA/MAA y la conciliación física real siguen pendientes: los catálogos de validación son ficticios, no precargas empresariales.
+
+### Preparación final de publicación — 2026-11-17
+
+Auditoría de solo lectura: seis migraciones en tres contextos aplicadas, ninguna pendiente ni cambio de modelo; datos previos conservados. Código listo para el destino verificado, con publicación condicionada a seguridad/configuración y autorización. No se cambiaron reglas ni módulos validados, no se registraron compañías ni se conciliaron equipos en esta preparación.
+
+- CPRSA/DMA/MAA se pueden registrar mediante el catálogo libre existente, tras confirmar nombre visible; razón social e identificador fiscal opcionales y no inferidos.
+- Conciliación usa la revisión física y los comandos ya implementados. Un inspector histórico no se convierte en custodio; Libre/Ocupado sigue derivado de custodia, sin tercer estado para «por revisar».
+- Los **46 registros anteriores incluyen 41 con marcadores de pruebas previas**. Se revisan antes de tratarlos como activos empresariales. No se borran ni se asignan en bloque; la hoja de trabajo no importa ni cambia la base.
+- El retiro de los nueve fixtures nuevos/ocho fotos requiere autorización específica, archivo de evidencia y mantenimiento revisado; no es una operación ordinaria de eliminación ni una excepción permanente a RN-103/RN-117 o a historia inmutable. No se ejecutó.
+- Seguridad, cambios manuales en Render, reversión sin Down y smoke tests en `../DEPLOYMENT.md`; informe `../RELEASE_READINESS.md`, procedimientos `TEST_DATA_RETIREMENT.md` y `CONCILIATION_GUIDE.md`. No se modificó production ni se inició inventario de muebles/electrodomésticos.
+
 ## 1. Propósito y alcance
 
 Este documento define las reglas de negocio que deberán gobernar las entidades, servicios de aplicación, persistencia y operaciones de InventarioCPR. Las validaciones críticas se ejecutarán siempre en el servidor. La interfaz Razor puede anticipar validaciones para mejorar la experiencia, pero nunca será la autoridad de integridad, autorización o trazabilidad.
@@ -28,6 +42,8 @@ Este documento no define todavía entidades, tablas, migraciones ni detalles de 
 #### Reglas obligatorias confirmadas
 
 - Código único para cada equipo y expediente digital permanente.
+- Empresas propietaria/usuaria y área administrativa independientes de área del trabajador, sede, ubicación y custodia.
+- Disponibilidad exclusivamente Libre/Ocupado calculada desde custodias registradas, sin terceros estados ni selector manual.
 - Alta definitiva nueva con código, categoría, nombre y fotografía principal real confirmada; se conservan códigos heredados como `EQ_1` y equipos anteriores sin foto.
 - Los demás datos pueden estar no registrados, no aplicar o estar pendientes de verificar, sin inventar valores.
 - Historial completo de responsables, asignaciones, entregas y devoluciones.
@@ -80,6 +96,8 @@ Este documento no define todavía entidades, tablas, migraciones ni detalles de 
 | 2026-10-26 | Mínimos y verificación | Se aprobó alta inicial con código, categoría y nombre; conservación de códigos heredados, estados explícitos de datos faltantes, última verificación y pendientes visibles en el expediente. |
 | 2026-11-12 | Fotografía obligatoria y borradores | El usuario aprobó implementar Borrador → Definitiva con principal real confirmada para altas nuevas, sustituyendo la anterior excepción de foto inicial de RN-111/116. Implementado localmente; migración preparada, no aplicada a Neon. |
 | 2026-11-13 | Validación real autorizada | Migración EquipmentDraftFinalization aplicada solo a test-migracion-inicial; 42 registros anteriores conservados. Tres fixtures definitivos con cuatro imágenes reales Cloudinary, cierre/reapertura, reintentos, controles de acceso y finalización concurrente aprobados. Render no actualizado. |
+| 2026-11-16 | Empresas y custodias | Plan ajustado aprobado para catálogo empresarial configurable, propiedad/uso separados, personal y áreas, custodias auditadas y disponibilidad derivada Libre/Ocupado. Primera fase implementada y probada localmente; migración preparada, no aplicada a Neon. |
+| 2026-11-17 | Validación real de empresas y custodias | Autorizada y aplicada únicamente en test-migracion-inicial tras preflight y recuperación lógica ensayada. Suite 89/0/0, flujos reales y UI con fixtures; activos anteriores conservados y sin conciliar. Sin commit/push/despliegue. |
 
 Las propuestas de código, moneda, zona horaria, catálogos de estado, retorno esperado y roles quedan registradas sin considerarse todavía aprobadas.
 
@@ -378,6 +396,50 @@ Para otras categorías se proponen `DefiniciónAtributoCategoría` (clave establ
 
 ## 5. Reglas de usuarios y responsables
 
+### RN-118 - Empresa propietaria y empresa usuaria
+
+- **Estado:** Confirmada por decisión de esta fase.
+- **Descripción:** El catálogo empresarial es configurable; propietario y usuario del activo son relaciones independientes y opcionales mientras no se conozcan.
+- **Condiciones:** Nuevas selecciones requieren empresa activa; desactivarla no elimina historia ni reclasifica activos. No se presupone relación legal entre empresas.
+- **Operaciones prohibidas:** Asignar CPRSA por defecto a datos anteriores, usar área/ubicación como empresa o cambiar propietario automáticamente al cambiar usuaria o custodio.
+- **Consecuencias históricas:** Cada cambio registra actor, valores antes/después e IDs; los movimientos conservan denominaciones de su fecha.
+- **Validación de servidor:** Catálogo existente, actividad cuando se elige una relación nueva, revisión operativa y auditoría atómica. Conservar una referencia inactiva anterior permite modificar otra dimensión independiente.
+- **Pruebas:** Propietario A y usuario B; cambiar solo usuario con el mismo custodio; renombrar/inactivar sin alterar snapshots anteriores.
+
+### RN-119 - Área administrativa y área del trabajador
+
+- **Estado:** Confirmada por decisión de esta fase.
+- **Descripción:** El activo puede pertenecer administrativamente a un área y estar libre o bajo custodia de un trabajador de otra área.
+- **Condiciones:** StaffMember representa personas, incluidas las que no tienen cuenta Identity. No se deduce responsabilidad de un inspector o verificador.
+- **Operaciones prohibidas:** Cambiar automáticamente el área del activo al transferir; usar nombres de personas como identidad única; borrar personas o movimientos históricos.
+- **Consecuencias históricas:** Custodia conserva responsable y contexto original aunque el trabajador cambie de nombre/área o se inactive.
+- **Validación de servidor:** Responsable activo, habilitado y con área/departamento válidos para abrir custodia; IDs y revisión, no texto libre como autoridad. Una persona inactiva aún puede figurar como custodio hasta registrar devolución/transferencia explícita.
+
+### RN-120 - Disponibilidad binaria e indicadores
+
+- **Estado:** Confirmada por decisión de esta fase, sustituye los seis estados propuestos previamente.
+- **Descripción:** Libre equivale a no tener custodia activa; Ocupado equivale a tener una. Compartido es modalidad, no un tercer estado.
+- **Condiciones:** Indicadores solo sobre definitivos y mismos filtros empresariales/consulta, antes de paginación. El desglose ignora la selección Libre/Ocupado aplicada a filas para conservar Total=Libres+Ocupados.
+- **Operaciones prohibidas:** Selector de disponibilidad editable, incluir borradores en totales, inferir funcionamiento técnico de Libre o inventar valores tras un error de consulta.
+- **Validación de servidor:** EXISTS/NOT EXISTS de custodias y snapshot PostgreSQL coherente. «Libres y funcionales» usa la última inspección explícita Funcional/Operativo y ausencia de custodia.
+
+### RN-121 - Conciliación inicial y fechas
+
+- **Estado:** Confirmada por decisión de esta fase.
+- **Descripción:** Los equipos anteriores pueden tener custodia física sin registro digital; deben revisarse explícitamente.
+- **Condiciones:** Mientras queden por revisar, mostrar que los resultados reflejan asignaciones registradas y no disponibilidad física comprobada. No añadir un estado de disponibilidad por esa incertidumbre.
+- **Operaciones prohibidas:** Inventar custodio/empresa/fecha original o convertir un verificador en responsable automáticamente.
+- **Consecuencias históricas:** Guardar confirmación digital, actor y fuente/nota; fecha original de entrega nula si se desconoce. Corregir mediante nuevas operaciones, sin reescribir periodos cerrados.
+- **Validación de servidor:** Custodia/revisión esperadas, permisos e idempotencia; fechas UTC explícitas y sin solapamientos. Devoluciones y transferencias no cierran una custodia distinta a la consultada.
+
+### RN-122 - Activo general y perfiles técnicos
+
+- **Estado:** Confirmada por decisión de esta fase.
+- **Descripción:** Equipment conserva su identidad general; empresa, fotografías, ubicación, custodia e historia no dependen de RAM/CPU/discos.
+- **Condiciones:** Informática mantiene sus formularios y datos; categoría admite metadato de perfil general o informático. Muebles/electrodomésticos tendrán formularios propios en una fase posterior.
+- **Operaciones prohibidas:** Renombrar tablas/IDs para esta ampliación, duplicar custodia por cada tipo de activo o afirmar implementados formularios futuros a partir de un campo de perfil.
+- **Validación de servidor:** Servicio de custodia opera por ID de activo definitivo y mantiene registro/fotografía previos; el perfil técnico no cambia Libre/Ocupado.
+
 ### RN-010 - Responsable individual y área
 
 - **Estado:** Confirmada por decisión.
@@ -420,7 +482,7 @@ Para otras categorías se proponen `DefiniciónAtributoCategoría` (clave establ
 
 ### RN-014 - Desactivación con custodias pendientes
 
-- **Estado:** Propuesta.
+- **Estado:** Propuesta no adoptada por esta fase: la inactivación excluye nuevas entregas pero no cierra custodias; las existentes permanecen visibles hasta devolución/transferencia explícita. No se implementó un bloqueo obligatorio de inactivación.
 - **Descripción:** Una persona no se desactiva definitivamente mientras mantenga custodias activas.
 - **Condiciones:** Sus equipos deben devolverse o transferirse mediante operaciones explícitas.
 - **Operaciones prohibidas:** Desactivar y dejar asignaciones activas huérfanas.
@@ -440,7 +502,7 @@ Para otras categorías se proponen `DefiniciónAtributoCategoría` (clave establ
 
 ### RN-016 - Cambio de custodio compartido
 
-- **Estado:** Propuesta.
+- **Estado:** Confirmada por la aprobación de esta fase.
 - **Descripción:** Cambiar el custodio de una oficina es una transferencia de responsabilidad, no una edición simple.
 - **Condiciones:** Debe existir custodio saliente, entrante elegible, fecha y motivo.
 - **Operaciones prohibidas:** Reemplazar el nombre del custodio sin cerrar su periodo.
@@ -492,7 +554,7 @@ Para otras categorías se proponen `DefiniciónAtributoCategoría` (clave establ
 
 ### RN-022 - Transferencia atómica
 
-- **Estado:** Propuesta.
+- **Estado:** Confirmada por la aprobación de esta fase.
 - **Descripción:** Una transferencia cierra la custodia actual y abre la siguiente en una sola transacción.
 - **Condiciones:** Deben existir equipo, origen vigente, destino elegible, fecha, condiciones y motivo.
 - **Operaciones prohibidas:** Cerrar el origen sin crear el destino o crear el destino sin cerrar el origen.
@@ -1238,9 +1300,9 @@ Para otras categorías se proponen `DefiniciónAtributoCategoría` (clave establ
 | Movimiento por ítem | En ubicación registrada, Salida temporal abierta, Retornado, Resuelto por excepción | Línea individual del movimiento |
 | Movimiento general | En preparación, Abierto, Parcialmente retornado, Cerrado, Cancelado | Estado derivado de sus líneas |
 | Ubicación | Ubicación habitual y ubicación física actual | Configuración del equipo y último movimiento confirmado |
-| Disponibilidad | Disponible, Bajo custodia, Compartido, Fuera temporalmente, En mantenimiento, Bloqueado por baja | Valor derivado; no se edita manualmente |
+| Disponibilidad | **Libre, Ocupado** | Exclusivamente ausencia/existencia de custodia principal activa; no se edita manualmente |
 
-Los nombres exactos de las condiciones física y operativa son propuestas pendientes de aprobación. Los estados de una solicitud de baja o reactivación pertenecen al flujo de aprobación y no sustituyen el ciclo de vida efectivo del equipo.
+Los nombres exactos de las condiciones física y operativa son propuestas pendientes de aprobación. El acceso «Libres y funcionales» usa la última condición explícita Funcional/Operativo, no texto vacío ni averías. Libre no implica apto para entregar. Custodia compartida sigue siendo Ocupado; conciliación incompleta se advierte aparte, sin tercer estado de disponibilidad. Los estados de una solicitud de baja o reactivación pertenecen al flujo de aprobación y no sustituyen el ciclo de vida efectivo del equipo.
 
 ### 14.2 Ciclo de vida
 

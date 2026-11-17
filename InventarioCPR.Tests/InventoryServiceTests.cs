@@ -58,16 +58,18 @@ public sealed class InventoryServiceTests
             throw new InvalidOperationException("El endpoint de desarrollo coincide con production.");
 
         var options = new DbContextOptionsBuilder<InventoryDbContext>().UseNpgsql(app.ConnectionString).Options;
+        await RemotePhotoFixture.AssertTargetAsync(app.ConnectionString);
         var firstFactory = new PooledDbContextFactory<InventoryDbContext>(options);
-        var first = new InventoryService(firstFactory, configuration, new StubInventoryAccess());
+        var first = RemotePhotoFixture.CreateService(firstFactory, configuration, new StubInventoryAccess());
         var code = "PRUEBA_" + Guid.NewGuid().ToString("N")[..12];
         var draft = new EquipmentInput { Code = code, Category = "laptop", Name = "Laptop ficticia de prueba",
             SerialStatus = "pending", PendingFields = ["storage"] };
         var id = await first.SaveAsync(draft);
+        await RemotePhotoFixture.FinalizeAsync(configuration, id);
 
         // A fresh factory/context must retrieve the committed record, not an in-memory draft.
         var secondFactory = new PooledDbContextFactory<InventoryDbContext>(options);
-        var reopened = new InventoryService(secondFactory, configuration, new StubInventoryAccess());
+        var reopened = RemotePhotoFixture.CreateService(secondFactory, configuration, new StubInventoryAccess());
         var persisted = await reopened.GetAsync(id);
         Assert.NotNull(persisted);
         Assert.Equal(code, persisted.Input.Code);
@@ -102,7 +104,7 @@ public sealed class InventoryServiceTests
         draft.Observation = "Observación ficticia posterior.";
         await reopened.SaveAsync(draft, id);
 
-        var latest = await new InventoryService(secondFactory, configuration, new StubInventoryAccess()).GetAsync(id);
+        var latest = await RemotePhotoFixture.CreateService(secondFactory, configuration, new StubInventoryAccess()).GetAsync(id);
         Assert.NotNull(latest);
         Assert.Equal(32, latest.Input.TotalRamGb);
         Assert.Equal(2, latest.Input.StorageUnits.Count);

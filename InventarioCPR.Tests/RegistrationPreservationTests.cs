@@ -29,6 +29,7 @@ public sealed class RegistrationPreservationTests
             new NpgsqlConnectionStringBuilder(raw).Host?.Replace("-pooler.", ".") != "ep-raspy-dream-b476uukh.c-6.us-east-2.aws.neon.tech")
             throw new InvalidOperationException("La conexión no es la rama de pruebas aprobada.");
         var options = new DbContextOptionsBuilder<InventoryDbContext>().UseNpgsql(raw).Options;
+        await RemotePhotoFixture.AssertTargetAsync(raw);
         var factory = new PooledDbContextFactory<InventoryDbContext>(options);
         var id = Guid.NewGuid();
         await using (var seed = await factory.CreateDbContextAsync())
@@ -52,7 +53,8 @@ public sealed class RegistrationPreservationTests
             seed.DataMarkers.Add(new EquipmentDataMarker { Id = Guid.NewGuid(), Equipment = equipment, FieldKey = "ram", Availability = DataAvailability.PendingVerification });
             await seed.SaveChangesAsync();
         }
-        var service = new InventoryService(factory, config, new StubInventoryAccess());
+        await RemotePhotoFixture.FinalizeAsync(config, id);
+        var service = RemotePhotoFixture.CreateService(factory, config, new StubInventoryAccess());
         var initial = (await service.GetAsync(id))!.Input;
         Assert.False(initial.RamModulesComplete);
         Assert.Equal(32, initial.TotalRamGb);

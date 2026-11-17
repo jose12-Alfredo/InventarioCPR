@@ -222,6 +222,8 @@ El shell usa sidebar fija en escritorio, topbar persistente y un lienzo central 
 
 Los cortes son guiados por el contenido. En inventario, el listado mantiene todo su espacio y el expediente se abre en una ventana modal amplia y centrada en escritorio y tablet, con foto e identidad lado a lado. En celular, el detalle ocupa la pantalla completa, con cabecera y acciones persistentes y un cuerpo desplazable. El listado cambia de tabla a tarjetas segun el ancho disponible de su contenedor; no reserva una columna para el detalle. A 48rem, la sidebar se reemplaza por un menu movil nativo con `details`. En los telefonos mas estrechos, filtros, formularios y acciones ocupan una sola columna cuando dos columnas ya no conservan etiquetas completas.
 
+La tabla de Inventario conserva nueve columnas: Foto, Codigo, Equipo, Categoria, Area, Responsable, Condicion, Disponibilidad y Acciones. Cambia a tarjetas cuando el contenedor del listado mide como maximo 61.99rem; las tarjetas usan dos columnas entre 42rem y 61.99rem y una por debajo de 42rem. Es una regla de ancho de contenedor, no una reserva de espacio para un panel lateral.
+
 ### Regla responsive e Impeccable
 
 "Todo desarrollo o modificación visual de InventarioCPR debe diseñarse de forma responsive para computadora, tablet y celular. El agente debe consultar y aplicar la skill Impeccable disponible, ejecutar las verificaciones pertinentes y validar visualmente el resultado antes de declarar terminada la tarea".
@@ -249,6 +251,15 @@ La profundidad es ambiental y escasa. Bordes de un pixel definen la mayoria de s
 Los controles usan esquinas compactas de 0.5rem, los paneles 0.75rem y los bloques de portada 1rem. Los estados breves pueden usar capsulas. Las marcas de registro son circulos cruzados de linea fina; aparecen como firma puntual, nunca como patron repetido en todos los componentes.
 
 ## Components
+
+### Indicadores y filtros de inventario
+- Exactamente tres indicadores compactos e interactivos: Total de equipos, Equipos libres y Equipos ocupados. Mantienen tres columnas en celular con etiqueta y cifra apiladas dentro del control; numeros tabulares y seleccion violeta explicita.
+- Valores de PostgreSQL sobre definitivos, segun empresa/filtros y antes de paginar. Libres + Ocupados = Total; la disponibilidad se aplica a las filas despues del desglose. Conciliacion pendiente se comunica aparte, no como cuarto indicador o tercer estado.
+- Empresa propietaria en filtros principales; empresa usuaria, area del activo, responsable y disponibilidad en filtros desplegables. Empresa y area no sustituyen la custodia.
+
+### Modulo Asignaciones
+- Ruta `/asignaciones`, con acceso al equipo desde `/asignaciones?equipo={id}` dentro del expediente amplio existente.
+- Operaciones e historial y Empresas, personal y areas son vistas separadas con seleccion visible. Los catalogos usan lista/editor en dos columnas y se apilan bajo 48rem, sin agregar un lateral permanente al listado de inventario.
 
 ### Buttons
 - **Shape:** rectangulo compacto con esquinas suaves y altura minima de 2.875rem.

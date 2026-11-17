@@ -1,0 +1,100 @@
+@using InventarioCPR.Application.Assignments
+@using InventarioCPR.Application.Inventory
+@inject AssignmentService Service
+
+<section class="directory-editor" aria-label="Administrar catálogos">
+    <div class="directory-editor__toolbar">
+        <div class="field"><label for="directory-kind">Catálogo</label><select id="directory-kind" @bind="kind" @bind:after="ChangeKindAsync"><option value="Company">Empresas</option><option value="Worker">Trabajadores</option><option value="Area">Áreas</option><option value="Department">Departamentos</option><option value="Site">Sedes</option><option value="Location">Ubicaciones / oficinas</option></select></div>
+        <div class="field"><label for="directory-search">Buscar en catálogo</label><input id="directory-search" @bind="search" @bind:event="oninput" type="search" /></div>
+        <button type="button" class="btn btn-secondary" @onclick="LoadAsync">Buscar</button>
+        <button type="button" class="btn btn-secondary" disabled="@(!canWrite || busy)" @onclick="New">Nueva entrada</button>
+    </div>
+    @if (error is not null) { <p class="directory-editor__error" role="alert">@error</p> }
+    @if (message is not null) { <p role="status">@message</p> }
+    <div class="directory-editor__layout">
+        <div>
+            <p class="directory-editor__hint">Seleccione una entrada para consultar o editar. Se muestran hasta 250 resultados; refine la búsqueda si es necesario.</p>
+            @if (entries.Count == 0) { <p role="status">No hay entradas para esta búsqueda. No se precargaron empresas ni personas.</p> }
+            <ul class="directory-editor__list">@foreach (var item in entries) { <li><button type="button" aria-pressed="@(id == item.Id ? "true" : "false")" @onclick="() => EditAsync(item.Id)"><strong>@item.Name</strong><span>@item.Context</span><small>@(item.Active ? "Activa / habilitada" : "Inactiva o no habilitada") · @item.Id.ToString("N")[..8]</small></button></li> }</ul>
+        </div>
+        <form @onsubmit="SaveAsync" @onsubmit:preventDefault>
+            <h2>@(revision == 0 && !editingExisting ? "Nueva entrada" : "Editar entrada")</h2>
+            <fieldset disabled="@(!canWrite || busy)">
+                <div class="field"><label for="directory-name">Nombre visible</label><input id="directory-name" required maxlength="@(kind==DirectoryKind.Worker?200:kind==DirectoryKind.Company?160:120)" @bind="name" @bind:event="oninput" /></div>
+                @if (kind == DirectoryKind.Company)
+                {
+                    <p class="directory-editor__hint">Confirme la denominación antes de registrar. No se presume una razón social o relación legal a partir de siglas.</p>
+                    <div class="field"><label for="directory-legal">Razón social (opcional)</label><input id="directory-legal" maxlength="240" @bind="legalName" /></div>
+                    <div class="field"><label for="directory-tax">Identificador fiscal (opcional)</label><input id="directory-tax" maxlength="80" @bind="taxId" /></div>
+                }
+                @if (kind is DirectoryKind.Area or DirectoryKind.Worker or DirectoryKind.Location)
+                {
+                    <div class="field"><label for="directory-parent">@(kind == DirectoryKind.Area ? "Departamento" : kind == DirectoryKind.Worker ? "Área del trabajador" : "Sede")</label><select id="directory-parent" @bind="parentId"><option value="">No registrado</option>@foreach (var option in parents) { <option value="@option.Id">@option.Name @(option.Active ? "" : "(inactiva)")</option> }</select></div>
+                }
+                @if (kind == DirectoryKind.Worker)
+                {
+                    <div class="field"><label for="directory-personnel">Código de personal (opcional)</label><input id="directory-personnel" maxlength="80" @bind="personnelCode" /></div>
+                    <label class="directory-editor__check"><input type="checkbox" @bind="canReceive" /> Habilitar para recibir equipos</label>
+                    <p class="directory-editor__hint">No requiere cuenta Identity. Los inspectores antiguos deben revisarse antes de habilitarlos como receptores.</p>
+                }
+                <label class="directory-editor__check"><input type="checkbox" @bind="active" /> Entrada activa</label>
+                <p class="directory-editor__hint">Desactivar no elimina el historial ni libera custodias automáticamente.</p>
+                <button type="submit" class="btn btn-primary">@(busy ? "Guardando…" : "Guardar catálogo")</button>
+            </fieldset>
+            @if (!canWrite) { <p>Su perfil permite consultar; no modificar catálogos.</p> }
+            @if (history.Count > 0)
+            {
+                <details><summary>Auditoría de esta entrada</summary>@foreach (var op in history) { <p>@op.RecordedAtUtc.ToString("yyyy-MM-dd HH:mm") UTC · @op.Actor · @op.Action</p> }</details>
+            }
+        </form>
+    </div>
+</section>
+
+@code {
+    [Parameter] public EventCallback Changed { get; set; }
+    private DirectoryKind kind = DirectoryKind.Company;
+    private IReadOnlyList<DirectoryOption> entries = [], parents = [];
+    private IReadOnlyList<OperationHistoryItem> history = [];
+    private Guid id = Guid.NewGuid(), requestId = Guid.NewGuid();
+    private Guid? parentId;
+    private string name = "", search = "";
+    private string? legalName, taxId, personnelCode, error, message;
+    private bool active = true, canReceive, canWrite, busy, editingExisting;
+    private int revision;
+    protected override async Task OnInitializedAsync() { canWrite = await Service.CanWriteAsync(); await LoadAsync(); }
+    private void New() { id = Guid.NewGuid();requestId = Guid.NewGuid();revision = 0;name = "";legalName = taxId = personnelCode = null;parentId = null;active = true;canReceive = kind == DirectoryKind.Worker;editingExisting = false;history = [];error = message = null; }
+    private async Task ChangeKindAsync() { New();search = "";await LoadAsync(); }
+    private async Task LoadAsync()
+    {
+        try
+        {
+            entries = await Service.OptionsAsync(kind, true, search);
+            parents = kind switch { DirectoryKind.Area => await Service.OptionsAsync(DirectoryKind.Department, true), DirectoryKind.Worker => await Service.OptionsAsync(DirectoryKind.Area, true), DirectoryKind.Location => await Service.OptionsAsync(DirectoryKind.Site, true), _ => [] };
+            error = null;
+        }
+        catch { error = "No se pudo consultar el catálogo. Compruebe la conexión y la migración del módulo."; }
+    }
+    private async Task EditAsync(Guid selected)
+    {
+        try
+        {
+            var entry = await Service.GetDirectoryEntryAsync(kind, selected);if (entry is null) return;
+            id = entry.Id;revision = entry.Revision;name = entry.Name;active = entry.IsActive;parentId = entry.ParentId;legalName = entry.LegalName;taxId = entry.TaxIdentifier;canReceive = entry.CanReceiveEquipment;personnelCode = entry.PersonnelCode;requestId = Guid.NewGuid();editingExisting = true;
+            history = await Service.CatalogHistoryAsync(kind,id);error = message = null;
+        }
+        catch { error = "No se pudo abrir la entrada. Reintente la consulta."; }
+    }
+    private async Task SaveAsync()
+    {
+        if (busy || !canWrite) return;busy = true;error = message = null;
+        try
+        {
+            await Service.SaveDirectoryAsync(new(requestId,id,kind,name,active,revision,parentId,legalName,taxId,canReceive,personnelCode));
+            await EditAsync(id);await LoadAsync();message = "Catálogo guardado. La historia anterior se conserva.";await Changed.InvokeAsync();
+        }
+        catch (InventoryValidationException ex) { error = ex.Message; }
+        catch (UnauthorizedAccessException) { error = "Su sesión no permite guardar. Vuelva a iniciar sesión."; }
+        catch { error = "No se confirmó el guardado. Reintente la misma operación antes de crear otra entrada."; }
+        finally { busy = false; }
+    }
+}

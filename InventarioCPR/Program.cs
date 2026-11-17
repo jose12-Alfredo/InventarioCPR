@@ -453,6 +453,7 @@ else builder.Services.AddScoped<IInventoryAccess, LocalTestInventoryAccess>(); /
 builder.Services.AddDbContextFactory<InventoryDbContext>(options =>
     options.UseNpgsql(NeonConnection.Runtime(builder.Configuration, builder.Environment.IsDevelopment())));
 builder.Services.AddScoped<InventoryService>();
+builder.Services.AddScoped<InventarioCPR.Application.Assignments.AssignmentService>();
 builder.Services.AddScoped<IPhotoStorage, CloudinaryPhotoStorage>();
 builder.Services.AddSingleton<PhotoWorkGate>();
 builder.Services.AddHttpClient("private-photos", client => client.Timeout = TimeSpan.FromSeconds(45))

@@ -6,11 +6,12 @@ using Npgsql;
 using System.Globalization;
 using InventarioCPR.Application.Photos;
 using InventarioCPR.Application.Security;
+using InventarioCPR.Application.Assignments;
 
 namespace InventarioCPR.Application.Inventory;
 
 public sealed record EquipmentDetails(Guid Id, EquipmentInput Input, IReadOnlyList<string> History, string? PhotoUrl,
-    bool IsDraft = false, int RegistrationRevision = 0, bool RequiresPhoto = false);
+    bool IsDraft = false, int RegistrationRevision = 0, bool RequiresPhoto = false, AssignmentSummary? Assignment = null);
 
 public sealed partial class InventoryService(IDbContextFactory<InventoryDbContext> contexts, IConfiguration configuration,
     IInventoryAccess access, IPhotoStorage? photoStorage = null)
@@ -34,10 +35,10 @@ public sealed partial class InventoryService(IDbContextFactory<InventoryDbContex
         await access.EnsureReadAsync();
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
         var physical = await db.Equipment.AsNoTracking().Where(x => x.RegistrationState == EquipmentRegistrationState.Definitive).Select(x => x.Inspections
-            .OrderByDescending(i => i.InspectedAtUtc).Select(i => i.PhysicalCondition).FirstOrDefault())
+            .OrderByDescending(i => i.InspectedAtUtc).ThenByDescending(i => i.Id).Select(i => i.PhysicalCondition).FirstOrDefault())
             .Distinct().ToListAsync(cancellationToken);
         var operational = await db.Equipment.AsNoTracking().Where(x => x.RegistrationState == EquipmentRegistrationState.Definitive).Select(x => x.Inspections
-            .OrderByDescending(i => i.InspectedAtUtc).Select(i => i.OperationalCondition).FirstOrDefault())
+            .OrderByDescending(i => i.InspectedAtUtc).ThenByDescending(i => i.Id).Select(i => i.OperationalCondition).FirstOrDefault())
             .Distinct().ToListAsync(cancellationToken);
         return physical.Where(x => !string.IsNullOrWhiteSpace(x)).OrderBy(x => x)
             .Select(x => new ConditionOption("physical:" + x, "Física · " + x))
@@ -49,12 +50,14 @@ public sealed partial class InventoryService(IDbContextFactory<InventoryDbContex
     public async Task<EquipmentPage> ListAsync(
         string? search = null, string? category = null, string? condition = null,
         int page = 0,
-        CancellationToken cancellationToken = default, bool draftsOnly = false)
+        CancellationToken cancellationToken = default, bool draftsOnly = false, InventoryScope? scope = null)
     {
         await access.EnsureReadAsync();
         await using var db = await contexts.CreateDbContextAsync(cancellationToken);
-        var equipment = db.Equipment.AsNoTracking().Where(x => x.RegistrationState ==
-            (draftsOnly ? EquipmentRegistrationState.Draft : EquipmentRegistrationState.Definitive));
+        await using var snapshot = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead, cancellationToken);
+        scope ??= new InventoryScope();
+        if (scope.Availability is { } availability && !Enum.IsDefined(availability)) throw new InventoryValidationException("Disponibilidad inválida.");
+        var equipment = db.Equipment.AsNoTracking().AsQueryable();
         if (!string.IsNullOrWhiteSpace(search))
         {
             var term = search.Trim().ToLower();
@@ -65,6 +68,15 @@ public sealed partial class InventoryService(IDbContextFactory<InventoryDbContex
         }
         if (!string.IsNullOrWhiteSpace(category) && Categories.TryGetValue(category, out var categoryName))
             equipment = equipment.Where(x => x.Category.Name == categoryName);
+        if (scope.OwnerCompanyId is { } owner) equipment = equipment.Where(x => x.OwnerCompanyId == owner);
+        if (scope.WithoutOwnerCompany) equipment = equipment.Where(x => x.OwnerCompanyId == null);
+        if (scope.UsingCompanyId is { } userCompany) equipment = equipment.Where(x => x.UsingCompanyId == userCompany);
+        if (scope.WithoutUsingCompany) equipment = equipment.Where(x => x.UsingCompanyId == null);
+        if (scope.OwnerAreaId is { } ownerArea) equipment = equipment.Where(x => x.OwnerAreaId == ownerArea);
+        if (scope.WorkerId is { } worker) equipment = equipment.Where(x => db.Custodies.Any(c => c.EquipmentId == x.Id && c.WorkerId == worker && c.EndedAtUtc == null));
+        if (scope.FreeFunctional) equipment = equipment.Where(x =>
+            x.Inspections.OrderByDescending(i => i.InspectedAtUtc).ThenByDescending(i => i.Id).Select(i => i.OperationalCondition == null ? "" : i.OperationalCondition.Trim().ToLower()).FirstOrDefault() == "funcional" ||
+            x.Inspections.OrderByDescending(i => i.InspectedAtUtc).ThenByDescending(i => i.Id).Select(i => i.OperationalCondition == null ? "" : i.OperationalCondition.Trim().ToLower()).FirstOrDefault() == "operativo");
         equipment = condition switch
         {
             "physical" => equipment.Where(x => x.Inspections.Any(i => i.PhysicalCondition != null)),
@@ -75,15 +87,23 @@ public sealed partial class InventoryService(IDbContextFactory<InventoryDbContex
         if (condition?.StartsWith("physical:", StringComparison.Ordinal) == true)
         {
             var value = condition["physical:".Length..];
-            equipment = equipment.Where(x => x.Inspections.OrderByDescending(i => i.InspectedAtUtc)
+            equipment = equipment.Where(x => x.Inspections.OrderByDescending(i => i.InspectedAtUtc).ThenByDescending(i => i.Id)
                 .Select(i => i.PhysicalCondition).FirstOrDefault() == value);
         }
         else if (condition?.StartsWith("operational:", StringComparison.Ordinal) == true)
         {
             var value = condition["operational:".Length..];
-            equipment = equipment.Where(x => x.Inspections.OrderByDescending(i => i.InspectedAtUtc)
+            equipment = equipment.Where(x => x.Inspections.OrderByDescending(i => i.InspectedAtUtc).ThenByDescending(i => i.Id)
                 .Select(i => i.OperationalCondition).FirstOrDefault() == value);
         }
+        // Same PostgreSQL repeatable-read snapshot: counts cannot disagree during concurrent custody changes.
+        var statsBase = equipment.Where(x => x.RegistrationState == EquipmentRegistrationState.Definitive);
+        equipment = equipment.Where(x => x.RegistrationState == (draftsOnly ? EquipmentRegistrationState.Draft : EquipmentRegistrationState.Definitive));
+        var statsTotal = await statsBase.CountAsync(cancellationToken);
+        var statsOccupied = await statsBase.CountAsync(x => db.Custodies.Any(c => c.EquipmentId == x.Id && c.EndedAtUtc == null), cancellationToken);
+        var reconcile = await statsBase.CountAsync(x => x.NeedsCustodyReconciliation, cancellationToken);
+        if (!draftsOnly && (scope.Availability == EquipmentAvailability.Free || scope.FreeFunctional)) equipment = equipment.Where(x => !db.Custodies.Any(c => c.EquipmentId == x.Id && c.EndedAtUtc == null));
+        else if (!draftsOnly && scope.Availability == EquipmentAvailability.Occupied) equipment = equipment.Where(x => db.Custodies.Any(c => c.EquipmentId == x.Id && c.EndedAtUtc == null));
         var total = await equipment.CountAsync(cancellationToken);
         var photosEnabled = configuration.GetValue<bool>("Inventory:PhotosEnabled") &&
             configuration.GetValue("Security:EnableIdentity", true) && !(await db.Database.GetPendingMigrationsAsync(cancellationToken)).Any();
@@ -93,19 +113,26 @@ public sealed partial class InventoryService(IDbContextFactory<InventoryDbContex
                 x.Id,
                 x.Code,
                 x.Name,
+                OwnerArea = x.OwnerArea != null ? x.OwnerArea.Name : null,
+                OwnerCompany = x.OwnerCompany != null ? x.OwnerCompany.Name : null,
+                UsingCompany = x.UsingCompany != null ? x.UsingCompany.Name : null,
+                Responsible = db.Custodies.Where(c => c.EquipmentId == x.Id && c.EndedAtUtc == null).Select(c => c.Worker.Name).FirstOrDefault(),
+                Occupied = db.Custodies.Any(c => c.EquipmentId == x.Id && c.EndedAtUtc == null),
                 Category = x.Category.Name,
                 Brand = x.Brand != null ? x.Brand.Name : null,
                 Model = x.CommercialModel != null ? x.CommercialModel.Name : null,
-                PhysicalCondition = x.Inspections.OrderByDescending(i => i.InspectedAtUtc).Select(i => i.PhysicalCondition).FirstOrDefault(),
-                OperationalCondition = x.Inspections.OrderByDescending(i => i.InspectedAtUtc).Select(i => i.OperationalCondition).FirstOrDefault(),
+                PhysicalCondition = x.Inspections.OrderByDescending(i => i.InspectedAtUtc).ThenByDescending(i => i.Id).Select(i => i.PhysicalCondition).FirstOrDefault(),
+                OperationalCondition = x.Inspections.OrderByDescending(i => i.InspectedAtUtc).ThenByDescending(i => i.Id).Select(i => i.OperationalCondition).FirstOrDefault(),
                 PhotoId = photosEnabled ? db.PhotoPrincipalPeriods.Where(p => p.EquipmentId == x.Id && p.ToUtc == null)
                     .Select(p => (Guid?)p.PhotoId).FirstOrDefault() : null
             })
             .ToListAsync(cancellationToken);
         var rows = rowData.Select(x => new EquipmentRow(x.Id,
             draftsOnly && x.Code == $"~BORRADOR-{x.Id:N}" ? "Código pendiente" : x.Code, x.Name, x.Category, x.Brand, x.Model,
-            x.PhysicalCondition, x.OperationalCondition, x.PhotoId is Guid photo ? PhotoRules.ContentUrl(x.Id, photo, true) : null)).ToList();
-        return new EquipmentPage(rows, total);
+            x.PhysicalCondition, x.OperationalCondition, x.PhotoId is Guid photo ? PhotoRules.ContentUrl(x.Id, photo, true) : null,
+            x.OwnerArea, x.Responsible, x.Occupied, x.OwnerCompany, x.UsingCompany)).ToList();
+        await snapshot.CommitAsync(cancellationToken);
+        return new EquipmentPage(rows, total, new InventoryStatistics(statsTotal, statsTotal - statsOccupied, statsOccupied, reconcile));
     }
 
     public async Task<EquipmentDetails?> GetAsync(Guid id, CancellationToken cancellationToken = default)
@@ -122,7 +149,7 @@ public sealed partial class InventoryService(IDbContextFactory<InventoryDbContex
         if (equipment.RegistrationState == EquipmentRegistrationState.Draft && equipment.DraftPayload is not null)
             return new EquipmentDetails(id, ReadDraft(equipment), [], null, true, equipment.RegistrationRevision, true);
         var latest = equipment.TechnicalConfigurations.SingleOrDefault(x => x.EffectiveToUtc is null);
-        var inspection = equipment.Inspections.OrderByDescending(x => x.InspectedAtUtc).FirstOrDefault();
+        var inspection = equipment.Inspections.OrderByDescending(x => x.InspectedAtUtc).ThenByDescending(x => x.Id).FirstOrDefault();
         var location = await db.LocationObservations.AsNoTracking().Include(x => x.Location).ThenInclude(x => x.Site)
             .Where(x => x.EquipmentId == id).OrderByDescending(x => x.ObservedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
@@ -180,7 +207,8 @@ public sealed partial class InventoryService(IDbContextFactory<InventoryDbContex
         if (verification is not null)
             history.Add($"Última verificación: {verification.VerifiedAtUtc:yyyy-MM-dd HH:mm} UTC · {verification.Verifier.Name}");
         return new EquipmentDetails(id, input, history, photoId is Guid photo ? PhotoRules.ContentUrl(id, photo) : null,
-            equipment.RegistrationState == EquipmentRegistrationState.Draft, equipment.RegistrationRevision, equipment.RequiresRegistrationPhoto);
+            equipment.RegistrationState == EquipmentRegistrationState.Draft, equipment.RegistrationRevision, equipment.RequiresRegistrationPhoto,
+            equipment.RegistrationState == EquipmentRegistrationState.Definitive ? await AssignmentService.ReadSummaryAsync(db, id, 0, cancellationToken) : null);
     }
 
     public async Task<Guid> SaveAsync(EquipmentInput input, Guid? id = null, CancellationToken cancellationToken = default)

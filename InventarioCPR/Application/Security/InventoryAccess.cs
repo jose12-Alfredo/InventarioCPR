@@ -33,7 +33,10 @@ public interface IInventoryAccess
     Task<bool> CanWriteAsync();
     Task EnsureReadAsync();
     Task EnsureWriteAsync();
+    Task<InventoryActor> RequireWriteActorAsync() => throw new UnauthorizedAccessException("Se requiere una cuenta Identity autorizada para registrar operaciones.");
 }
+
+public sealed record InventoryActor(Guid Id, string Name);
 
 // The current local-only fictitious-data mode is retained until the Identity migration is approved.
 public sealed class LocalTestInventoryAccess(IWebHostEnvironment environment) : IInventoryAccess
@@ -54,7 +57,7 @@ public sealed class IdentityInventoryAccess(
     // share the circuit-scoped AccessDbContext, which cannot run simultaneous EF operations.
     private readonly SemaphoreSlim identityQueries = new(1, 1);
 
-    private async Task<bool> AllowedAsync(string policy)
+    private async Task<InventoryActor?> AllowedActorAsync(string policy)
     {
         await identityQueries.WaitAsync();
         try
@@ -62,20 +65,25 @@ public sealed class IdentityInventoryAccess(
             var principal = (await authenticationState.GetAuthenticationStateAsync()).User;
             if (principal.Identity?.IsAuthenticated != true ||
                 !(await authorization.AuthorizeAsync(principal, policy)).Succeeded)
-                return false;
+                return null;
             var account = await signIn.ValidateSecurityStampAsync(principal);
-            if (account?.IsActive != true) return false;
+            if (account?.IsActive != true) return null;
             var currentRoles = await users.GetRolesAsync(account);
-            return policy switch
+            var allowed = policy switch
             {
                 InventoryPolicies.Read => currentRoles.Any(x => x is InventoryPolicies.Administrator or InventoryPolicies.Operator or InventoryPolicies.Viewer),
                 InventoryPolicies.Write => currentRoles.Any(x => x is InventoryPolicies.Administrator or InventoryPolicies.Operator),
                 InventoryPolicies.ManageUsers => currentRoles.Contains(InventoryPolicies.Administrator),
                 _ => false
             };
+            return allowed ? new InventoryActor(account.Id, account.UserName ?? account.Id.ToString()) : null;
         }
         finally { identityQueries.Release(); }
     }
+
+    private async Task<bool> AllowedAsync(string policy) => await AllowedActorAsync(policy) is not null;
+    public async Task<InventoryActor> RequireWriteActorAsync() => await AllowedActorAsync(InventoryPolicies.Write)
+        ?? throw new UnauthorizedAccessException("Su sesión no permite registrar operaciones de inventario.");
 
     public Task<bool> CanReadAsync() => AllowedAsync(InventoryPolicies.Read);
     public Task<bool> CanWriteAsync() => AllowedAsync(InventoryPolicies.Write);

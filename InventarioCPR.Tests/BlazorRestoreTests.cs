@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Runtime.CompilerServices;
 using Xunit;
 
 namespace InventarioCPR.Tests;
@@ -9,8 +10,8 @@ public sealed class BlazorRestoreTests
     [Fact]
     public async Task ProjectOnlyDockerRestoreIncludesBlazorFrameworkAssets()
     {
-        var root = new DirectoryInfo(AppContext.BaseDirectory);
-        while (root is not null && !File.Exists(Path.Combine(root.FullName, "InventarioCPR.slnx"))) root = root.Parent;
+        // Release validation can intentionally place binaries outside the worktree (--artifacts-path).
+        var root = FindRoot(AppContext.BaseDirectory) ?? FindRoot(Directory.GetCurrentDirectory()) ?? FindRoot(SourceDirectory());
         Assert.NotNull(root);
         var fixture = Path.Combine(Path.GetTempPath(), "opencode", "blazor-restore-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(fixture);
@@ -39,5 +40,13 @@ public sealed class BlazorRestoreTests
                 "Restoring only the csproj must include Microsoft.AspNetCore.App.Internal.Assets; otherwise Docker omits blazor.web.js.");
         }
         finally { Directory.Delete(fixture, recursive: true); }
+    }
+
+    private static string SourceDirectory([CallerFilePath] string sourceFile = "") => Path.GetDirectoryName(sourceFile)!;
+    private static DirectoryInfo? FindRoot(string path)
+    {
+        var directory = new DirectoryInfo(path);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "InventarioCPR.slnx"))) directory = directory.Parent;
+        return directory;
     }
 }

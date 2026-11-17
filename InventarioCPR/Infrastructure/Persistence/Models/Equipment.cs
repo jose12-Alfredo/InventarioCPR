@@ -9,6 +9,15 @@ public sealed class Equipment
     public Guid CategoryId { get; set; }
     public EquipmentCategory Category { get; set; } = null!;
     public string Name { get; set; } = null!;
+    public Guid? OwnerCompanyId { get; set; }
+    public Company? OwnerCompany { get; set; }
+    public Guid? UsingCompanyId { get; set; }
+    public Company? UsingCompany { get; set; }
+    public Guid? OwnerAreaId { get; set; }
+    public Area? OwnerArea { get; set; }
+    public int OperationsRevision { get; set; }
+    public bool NeedsCustodyReconciliation { get; set; }
+    public DateTimeOffset? CustodyReviewedAtUtc { get; set; }
     public EquipmentRegistrationState RegistrationState { get; set; } = EquipmentRegistrationState.Draft;
     // False only for records backfilled by the migration; never a user-editable exemption.
     public bool RequiresRegistrationPhoto { get; set; } = true;

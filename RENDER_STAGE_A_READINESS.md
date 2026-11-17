@@ -1,5 +1,7 @@
 # Etapa A — revisión previa a publicación en Render
 
+**Documento histórico de Etapa A.** La configuración por disco `DataProtection__KeysPath` descrita aquí fue sustituida por PostgreSQL y certificados C+A/B; no seguirla para la actualización actual. Revisión vigente 2026-11-17: `RELEASE_READINESS.md` y `DEPLOYMENT.md`. Migraciones verificadas solo en test-migracion-inicial; no hay autorización actual de commit/push/despliegue ni cambios de variables/production. Las fechas, autorizaciones y resultados siguientes pertenecen a aquella etapa.
+
 ## Estado de esta revisión
 
 **La funcionalidad está validada localmente y el usuario autorizó posteriormente subir el código a GitHub para que Render lo despliegue.** Los resultados siguientes corresponden a la revisión previa a esa publicación. La configuración interna de Render todavía no está verificada y no se autorizó modificar production de Neon ni aplicar migraciones durante el arranque.

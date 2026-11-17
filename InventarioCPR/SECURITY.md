@@ -1,4 +1,22 @@
-# Acceso seguro propuesto para InventarioCPR
+# Acceso y seguridad de InventarioCPR
+
+## Preparación final de publicación — 2026-11-17
+
+Auditoría READ ONLY en la rama autorizada: ninguna migración pendiente en Inventory/Identity/DP, datos anteriores y llavero conservados. C definitivo ya existe y está vigente; A/B históricos son necesarios. No se emitieron contraseñas, certificados ni cambios de variables. Quedan por confirmar en el dashboard el endpoint efectivo del servicio/DP, variables, deployment y plan de reversión, y resolver la credencial PostgreSQL expuesta sin impacto no autorizado en production. El reset Identity antiguo está acreditado más abajo; no repetirlo por rutina. Procedimientos vigentes en `CREDENTIAL_ROTATION.md` y `../DEPLOYMENT.md`.
+
+Retiro de fixtures solo preparado en `TEST_DATA_RETIREMENT.md`: no eliminación de evidencias, purga ni desactivación de triggers sin autorización específica y archivo de recuperación. No se crean excepciones permanentes a la historia inmutable. Informe `../RELEASE_READINESS.md`; no hubo commit/push/despliegue ni modificación de production.
+
+## Empresas y asignaciones — validación autorizada (2026-11-17)
+
+Implementado `AssignmentService`, reutilizando `InventoryPolicies.Write` (Administrador/Sistemas) y lectura vigente (incluye Consulta). Las operaciones y catálogos resuelven `InventoryActor` desde Identity, cuenta activa, sello y roles actuales dentro del acceso serializado del circuito. El cliente no elige actor ni permisos. Trabajadores (`StaffMember`) no requieren cuenta Identity.
+
+Asignar/transferir/devolver/clasificar usa contexto y transacción de inventario independientes, revisión/custodia esperadas, bloqueo de equipo y recibo único con huella/actor. SQL impide dos custodias principales abiertas; protege historia/auditoría, solapamientos y custodia de borradores. Un fallo de auditoría revierte también la transferencia. No se modifican periodos cerrados ni se eliminan movimientos/catálogos desde los servicios. La empresa seleccionada es filtro de consulta, **no frontera multitenant ni restricción por compañía del usuario**.
+
+Entrega y devolución requieren condiciones observadas e inspector StaffMember activo verificado por servidor, separado del actor Identity auditado. La transferencia conserva condición de recepción y entrega y agrega inspección de estado resultante; la conciliación no fabrica inspecciones antiguas. Reintentar un movimiento confirmado no duplica su inspección.
+
+Migración `20261116181150_CompaniesAndEquipmentCustodies` aplicada solo a `test-migracion-inicial`, tras comprobar identidad remota, SQL, recuperación local del respaldo y conservación de datos. Suite Release 89/0/0; pruebas locales desechables incluyen carreras, SQL directo, rollback, read-only y revocación. Los flujos reales Neon usaron actor Identity validado, fixtures nuevos, concurrencia e idempotencia. Las relaciones empresariales antiguas permanecen nulas; no se insertaron compañías ni personas reales. Desactivar un trabajador conserva su custodia hasta una devolución/transferencia explícita y lo excluye de nuevas entregas; desactivar una empresa conserva historia.
+
+Cloudinary y Data Protection se conservan: seis fotografías privadas nuevas/históricas leídas con hash correcto y dos claves/cargas históricas descifradas sin generar claves. La comparación final conserva filas de las 36 tablas del baseline posterior a migrar, incluida Identity/security. Navegador local: foto anónima 302, Consulta con asignación deshabilitada y ninguna petición directa a Cloudinary. No se cambiaron credenciales ni se desplegó. Alcance y límites en `ASSIGNMENTS.md` y `ASSIGNMENTS_NEON_VALIDATION.md`.
 
 ## Registro obligatorio con fotografía — validación real (2026-11-13)
 

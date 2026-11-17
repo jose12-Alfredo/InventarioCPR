@@ -23,7 +23,7 @@ public sealed partial class InventoryService
         var category = db.Categories.Local.FirstOrDefault(x => x.Name == name) ??
             await db.Categories.SingleOrDefaultAsync(x => x.Name == name, ct);
         if (category is not null) return category;
-        category = new EquipmentCategory { Id = Guid.NewGuid(), Name = name };
+        category = new EquipmentCategory { Id = Guid.NewGuid(), Name = name, TechnicalProfile = key is "desktop" or "laptop" ? "Computer" : "General" };
         db.Categories.Add(category);
         return category;
     }

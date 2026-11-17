@@ -1,6 +1,6 @@
-# Data Protection — implementación local y activación pendiente
+# Data Protection — implementación y preparación de publicación
 
-Estado: implementado y validado contra Neon real **exclusivamente en `test-migracion-inicial`** el 12 de noviembre de 2026. Migración aplicada con autorización; dos claves de prueba cifradas conservadas. **No publicar hasta completar las acciones de activación.** No se cambiaron credenciales reales ni configuración de Render. Resultados y límites en `DATA_PROTECTION_NEON_VALIDATION.md`. Este documento sustituye las instrucciones antiguas de persistir `/var/data/keys` para el próximo despliegue.
+Estado actualizado al **17 de noviembre de 2026**: validado contra Neon real exclusivamente en `test-migracion-inicial`, migración aplicada y dos claves cifradas conservadas. C definitivo ya está creado, RSA3072 hasta 2028-11-13; A/B históricos se conservan para lectura. La auditoría actual no tiene pendientes ni cambios de modelo y no escribió claves. La configuración efectiva de Render debe contrastarse antes de actualizar; no se modificó en esta preparación. Pasos/variables/reversión vigentes en `../DEPLOYMENT.md`, evidencia en `DATA_PROTECTION_NEON_VALIDATION.md` y `ASSIGNMENTS_NEON_VALIDATION.md`. Este documento sustituye el diseño antiguo `/var/data/keys`; no generar otro certificado ni repetir migraciones por rutina.
 
 ## Arquitectura
 

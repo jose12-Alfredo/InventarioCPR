@@ -3,17 +3,19 @@ using Microsoft.EntityFrameworkCore;
 
 namespace InventarioCPR.Infrastructure.Persistence;
 
-public sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> options) : DbContext(options)
+public sealed partial class InventoryDbContext(DbContextOptions<InventoryDbContext> options) : DbContext(options)
 {
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         ProtectPhotoHistory();
+        ProtectOperationsHistory();
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
 
     public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         ProtectPhotoHistory();
+        ProtectOperationsHistory();
         return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
     }
 
@@ -72,6 +74,7 @@ public sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> opti
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        ConfigureOperations(modelBuilder);
         modelBuilder.Entity<EquipmentCategory>(e =>
         {
             e.ToTable("equipment_categories", t => t.HasCheckConstraint("CK_categories_name", "length(btrim(\"Name\")) > 0"));

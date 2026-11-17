@@ -1,0 +1,28 @@
+@using InventarioCPR.Application.Assignments
+@using InventarioCPR.Infrastructure.Persistence.Models
+<section class="assignment-history" aria-label="Historial de custodias y operaciones">
+    <h3>Responsables anteriores y actuales</h3>
+    @if (Summary.History.Count == 0) { <p>No hay custodias registradas en esta página.</p> }
+    <ol>@foreach (var item in Summary.History)
+    {
+        <li><strong>@item.Worker</strong><span>@item.WorkerArea · @item.Department</span><span>@(item.Kind == CustodyKind.SharedOffice ? $"Compartido · {item.Office}" : "Individual")</span>
+            <span>@item.FromUtc.ToString("yyyy-MM-dd HH:mm") UTC → @(item.ToUtc is { } end ? end.ToString("yyyy-MM-dd HH:mm") + " UTC" : "Vigente")</span>
+            <small>Propietaria: @(item.OwnerCompany ?? "No registrada") · Usuaria: @(item.UsingCompany ?? "No registrada") · Área del activo: @(item.OwnerArea ?? "No registrada")</small>
+            @if (item.Reconciled) { <small>Conciliación: fecha original de entrega @(item.OriginalDeliveryAtUtc is { } original ? original.ToString("yyyy-MM-dd HH:mm") + " UTC" : "desconocida"). El inicio indica la confirmación digital.</small> }
+        </li>
+    }</ol>
+    <h3>Movimientos y auditoría</h3>
+    @if (Summary.Operations.Count == 0) { <p>No hay movimientos registrados en esta página.</p> }
+    <ol>@foreach (var op in Summary.Operations)
+    {
+        <li><strong>@ActionLabel(op.Action)</strong><span>@op.RecordedAtUtc.ToString("yyyy-MM-dd HH:mm:ss") UTC · @op.Actor</span>
+            @if (op.EffectiveAtUtc is { } effective) { <small>Fecha efectiva: @effective.ToString("yyyy-MM-dd HH:mm") UTC</small> }
+            @if (!string.IsNullOrWhiteSpace(op.Note)) { <p>@op.Note</p> }
+            <details><summary>Ver valores registrados</summary>@if (op.BeforeJson is not null) { <p>Antes</p><pre>@op.BeforeJson</pre> }<p>Después</p><pre>@op.AfterJson</pre></details>
+        </li>
+    }</ol>
+</section>
+@code {
+    [Parameter, EditorRequired] public AssignmentSummary Summary { get; set; } = null!;
+    public static string ActionLabel(string action) => action switch { "Assign" => "Asignación", "Transfer" => "Transferencia", "Return" => "Devolución", "ReconcileAssigned" => "Conciliación de custodia", "ReconcileFree" => "Conciliación sin custodia", "Classification" => "Cambio de empresa o área administrativa", _ => action };
+}

@@ -1,3 +1,5 @@
+using InventarioCPR.Application.Assignments;
+
 namespace InventarioCPR.Application.Inventory;
 
 public sealed class EquipmentInput
@@ -48,8 +50,10 @@ public sealed class StorageInput
 }
 
 public sealed record EquipmentRow(Guid Id, string Code, string Name, string Category,
-    string? Brand, string? Model, string? PhysicalCondition, string? OperationalCondition, string? PhotoUrl);
-public sealed record EquipmentPage(IReadOnlyList<EquipmentRow> Rows, int Total);
+    string? Brand, string? Model, string? PhysicalCondition, string? OperationalCondition, string? PhotoUrl,
+    string? OwnerArea = null, string? Responsible = null, bool IsOccupied = false,
+    string? OwnerCompany = null, string? UsingCompany = null);
+public sealed record EquipmentPage(IReadOnlyList<EquipmentRow> Rows, int Total, InventoryStatistics? Statistics = null);
 public sealed record ConditionOption(string Value, string Label);
 
 public sealed class InventoryValidationException(string message) : Exception(message);

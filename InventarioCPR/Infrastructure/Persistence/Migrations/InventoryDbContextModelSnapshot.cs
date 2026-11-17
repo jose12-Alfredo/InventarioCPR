@@ -31,10 +31,18 @@ namespace InventarioCPR.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("DepartmentId")
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
@@ -121,16 +129,68 @@ namespace InventarioCPR.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("InventarioCPR.Infrastructure.Persistence.Models.Company", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("LegalName")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("NameNormalized")
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("text")
+                        .HasComputedColumnSql("upper(btrim(\"Name\"))", true);
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TaxIdentifier")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NameNormalized")
+                        .IsUnique();
+
+                    b.ToTable("companies", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_company_name", "length(btrim(\"Name\")) > 0 AND \"Revision\" >= 0");
+                        });
+                });
+
             modelBuilder.Entity("InventarioCPR.Infrastructure.Persistence.Models.Department", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
@@ -170,6 +230,9 @@ namespace InventarioCPR.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("CommercialModelId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTimeOffset?>("CustodyReviewedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("DraftPayload")
                         .HasColumnType("text");
 
@@ -180,6 +243,18 @@ namespace InventarioCPR.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<bool>("NeedsCustodyReconciliation")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("OperationsRevision")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("OwnerAreaId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("OwnerCompanyId")
+                        .HasColumnType("uuid");
 
                     b.Property<int>("RegistrationRevision")
                         .HasColumnType("integer");
@@ -210,6 +285,9 @@ namespace InventarioCPR.Infrastructure.Persistence.Migrations
                         .HasMaxLength(160)
                         .HasColumnType("character varying(160)");
 
+                    b.Property<Guid?>("UsingCompanyId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.HasIndex("BrandId");
@@ -219,9 +297,15 @@ namespace InventarioCPR.Infrastructure.Persistence.Migrations
                     b.HasIndex("CodeNormalized")
                         .IsUnique();
 
+                    b.HasIndex("OwnerAreaId");
+
                     b.HasIndex("RegistrationState", "CodeNormalized");
 
+                    b.HasIndex("UsingCompanyId", "RegistrationState");
+
                     b.HasIndex("CommercialModelId", "BrandId", "CategoryId");
+
+                    b.HasIndex("OwnerCompanyId", "RegistrationState", "CodeNormalized");
 
                     b.ToTable("equipment", null, t =>
                         {
@@ -272,6 +356,11 @@ namespace InventarioCPR.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<string>("TechnicalProfile")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Name")
@@ -280,6 +369,105 @@ namespace InventarioCPR.Infrastructure.Persistence.Migrations
                     b.ToTable("equipment_categories", null, t =>
                         {
                             t.HasCheckConstraint("CK_categories_name", "length(btrim(\"Name\")) > 0");
+                        });
+                });
+
+            modelBuilder.Entity("InventarioCPR.Infrastructure.Persistence.Models.EquipmentCustody", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Closure")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<DateTimeOffset?>("EndedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("EquipmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsInitialReconciliation")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<DateTimeOffset?>("OriginalDeliveryAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("OwnerAreaName")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<string>("OwnerCompanyName")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<Guid?>("SharedLocationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SharedLocationName")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<string>("SharedSiteName")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<DateTimeOffset>("StartedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UsingCompanyName")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<Guid>("WorkerAreaId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("WorkerAreaName")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<string>("WorkerDepartmentName")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<Guid>("WorkerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("WorkerName")
+                        .IsRequired()
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EquipmentId")
+                        .IsUnique()
+                        .HasFilter("\"EndedAtUtc\" IS NULL");
+
+                    b.HasIndex("SharedLocationId");
+
+                    b.HasIndex("WorkerAreaId");
+
+                    b.HasIndex("EquipmentId", "StartedAtUtc");
+
+                    b.HasIndex("WorkerId", "EquipmentId")
+                        .HasFilter("\"EndedAtUtc\" IS NULL");
+
+                    b.ToTable("equipment_custodies", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_custody_kind", "(\"Kind\"='Individual' AND \"SharedLocationId\" IS NULL) OR (\"Kind\"='SharedOffice' AND \"SharedLocationId\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_custody_original_date", "\"OriginalDeliveryAtUtc\" IS NULL OR \"OriginalDeliveryAtUtc\" <= \"StartedAtUtc\"");
+
+                            t.HasCheckConstraint("CK_custody_period", "(\"EndedAtUtc\" IS NULL AND \"Closure\" IS NULL) OR (\"EndedAtUtc\" IS NOT NULL AND \"EndedAtUtc\">=\"StartedAtUtc\" AND \"Closure\" IN ('Return','Transfer'))");
                         });
                 });
 
@@ -418,16 +606,109 @@ namespace InventarioCPR.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("InventarioCPR.Infrastructure.Persistence.Models.EquipmentOperation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<Guid>("ActorId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ActorName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("AfterJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("BeforeJson")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("DestinationCustodyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("EffectiveAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("EntityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<Guid?>("EquipmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("NewName")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<string>("PreviousName")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<DateTimeOffset>("RecordedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("RequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("SourceCustodyId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RequestId")
+                        .IsUnique();
+
+                    b.HasIndex("DestinationCustodyId", "EquipmentId");
+
+                    b.HasIndex("EquipmentId", "RecordedAtUtc");
+
+                    b.HasIndex("SourceCustodyId", "EquipmentId");
+
+                    b.HasIndex("EntityType", "EntityId", "RecordedAtUtc");
+
+                    b.ToTable("equipment_operations", (string)null);
+                });
+
             modelBuilder.Entity("InventarioCPR.Infrastructure.Persistence.Models.Location", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(160)
                         .HasColumnType("character varying(160)");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("integer");
 
                     b.Property<Guid>("SiteId")
                         .HasColumnType("uuid");
@@ -694,10 +975,18 @@ namespace InventarioCPR.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
@@ -719,14 +1008,33 @@ namespace InventarioCPR.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("AreaId")
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("CanReceiveEquipment")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<string>("PersonnelCode")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
 
                     b.HasIndex("AreaId");
+
+                    b.HasIndex("PersonnelCode")
+                        .IsUnique()
+                        .HasFilter("\"PersonnelCode\" IS NOT NULL");
 
                     b.ToTable("staff_members", null, t =>
                         {
@@ -975,6 +1283,21 @@ namespace InventarioCPR.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("InventarioCPR.Infrastructure.Persistence.Models.Area", "OwnerArea")
+                        .WithMany()
+                        .HasForeignKey("OwnerAreaId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("InventarioCPR.Infrastructure.Persistence.Models.Company", "OwnerCompany")
+                        .WithMany()
+                        .HasForeignKey("OwnerCompanyId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("InventarioCPR.Infrastructure.Persistence.Models.Company", "UsingCompany")
+                        .WithMany()
+                        .HasForeignKey("UsingCompanyId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("InventarioCPR.Infrastructure.Persistence.Models.CommercialModel", "CommercialModel")
                         .WithMany()
                         .HasForeignKey("CommercialModelId", "BrandId", "CategoryId")
@@ -986,6 +1309,46 @@ namespace InventarioCPR.Infrastructure.Persistence.Migrations
                     b.Navigation("Category");
 
                     b.Navigation("CommercialModel");
+
+                    b.Navigation("OwnerArea");
+
+                    b.Navigation("OwnerCompany");
+
+                    b.Navigation("UsingCompany");
+                });
+
+            modelBuilder.Entity("InventarioCPR.Infrastructure.Persistence.Models.EquipmentCustody", b =>
+                {
+                    b.HasOne("InventarioCPR.Infrastructure.Persistence.Models.Equipment", "Equipment")
+                        .WithMany()
+                        .HasForeignKey("EquipmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("InventarioCPR.Infrastructure.Persistence.Models.Location", "SharedLocation")
+                        .WithMany()
+                        .HasForeignKey("SharedLocationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("InventarioCPR.Infrastructure.Persistence.Models.Area", "WorkerArea")
+                        .WithMany()
+                        .HasForeignKey("WorkerAreaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("InventarioCPR.Infrastructure.Persistence.Models.StaffMember", "Worker")
+                        .WithMany()
+                        .HasForeignKey("WorkerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Equipment");
+
+                    b.Navigation("SharedLocation");
+
+                    b.Navigation("Worker");
+
+                    b.Navigation("WorkerArea");
                 });
 
             modelBuilder.Entity("InventarioCPR.Infrastructure.Persistence.Models.EquipmentDataMarker", b =>
@@ -1053,6 +1416,26 @@ namespace InventarioCPR.Infrastructure.Persistence.Migrations
                     b.Navigation("Author");
 
                     b.Navigation("Equipment");
+                });
+
+            modelBuilder.Entity("InventarioCPR.Infrastructure.Persistence.Models.EquipmentOperation", b =>
+                {
+                    b.HasOne("InventarioCPR.Infrastructure.Persistence.Models.Equipment", null)
+                        .WithMany()
+                        .HasForeignKey("EquipmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("InventarioCPR.Infrastructure.Persistence.Models.EquipmentCustody", null)
+                        .WithMany()
+                        .HasForeignKey("DestinationCustodyId", "EquipmentId")
+                        .HasPrincipalKey("Id", "EquipmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("InventarioCPR.Infrastructure.Persistence.Models.EquipmentCustody", null)
+                        .WithMany()
+                        .HasForeignKey("SourceCustodyId", "EquipmentId")
+                        .HasPrincipalKey("Id", "EquipmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("InventarioCPR.Infrastructure.Persistence.Models.Location", b =>

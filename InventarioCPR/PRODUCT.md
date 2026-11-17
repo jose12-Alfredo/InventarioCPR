@@ -8,7 +8,7 @@ web
 
 ## Users
 
-El usuario principal de la primera interfaz es el personal de Inventario/TI de Consorcio Publicitario. Trabaja en un sistema interno para registrar, consultar y controlar activos tecnologicos y necesita orientarse rapidamente hacia el inventario.
+El usuario principal es el personal de Inventario/TI del consorcio publicitario. Necesita conocer activos registrados, disponibilidad segun custodias, responsables y empresas/areas sin confundir esos conceptos. Las empresas se configuran en catalogo; no se presumen sus denominaciones legales ni relaciones societarias.
 
 ## Product Purpose
 
@@ -20,14 +20,14 @@ Cada activo se trata como un expediente permanente: las nuevas asignaciones, con
 
 ## Operating Context
 
-Es una herramienta empresarial interna utilizada principalmente desde escritorio y laptop, con acceso adaptable a tablet y celular. La primera fase visual orienta al usuario y ofrece acceso claro al modulo de inventario; no implementa persistencia ni operaciones de base de datos.
+Es una herramienta empresarial interna utilizada desde escritorio, tablet y celular. Inventario ya registra expedientes y fotografias privadas; la fase local de empresas/asignaciones permite consultar Libre/Ocupado y gestionar custodia auditada. La publicacion de cada fase y su esquema se autorizan por separado; las capturas locales de prueba no se presentan como datos empresariales.
 
 ## Capabilities and Constraints
 
 - Blazor Web App con C#, ASP.NET Core e interactividad Interactive Server.
-- Arquitectura monolitica modular; PostgreSQL y Entity Framework Core estan previstos, pero no forman parte de esta fase.
-- Las validaciones criticas futuras deben ejecutarse en el servidor.
-- Los modulos se desarrollan progresivamente; solo Inicio e Inventario se habilitan en esta fase.
+- Arquitectura monolitica modular con PostgreSQL/Entity Framework Core; Identity separado de los trabajadores y fotografias privadas en Cloudinary.
+- Validaciones criticas en servidor, transacciones y conservacion del historial. Disponibilidad exclusivamente Libre/Ocupado derivada de custodia principal; empresas propietaria/usuaria y areas son independientes.
+- Inicio e Inventario existentes; Asignaciones y catalogos empresariales implementados y validados con migracion autorizada solo en Neon test-migracion-inicial. El modulo sigue pendiente de publicacion autorizada. Mantenimientos y formularios de otros tipos de activos siguen siendo fases futuras.
 - No deben presentarse acciones simuladas como si guardaran informacion.
 - Las reglas confirmadas, propuestas y pendientes conservan la clasificacion de `BUSINESS_RULES.md`.
 
@@ -42,7 +42,7 @@ Es una herramienta empresarial interna utilizada principalmente desde escritorio
 
 - Reglas y alcance: `BUSINESS_RULES.md`.
 - Estado y decisiones del proyecto: `.opencode/MEMORY.md`.
-- No existen datos empresariales, metricas, fotografias ni testimonios reales para mostrar; no deben fabricarse.
+- Las pruebas usan fixtures etiquetados: PostgreSQL local desechable y validacion remota autorizada exclusivamente en test-migracion-inicial. No inventar indicadores ni extrapolar esos fixtures a catalogos empresariales reales. Resultados y limites: `ASSIGNMENTS.md` y `ASSIGNMENTS_NEON_VALIDATION.md`.
 
 ## Product Principles
 
